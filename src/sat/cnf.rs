@@ -1,150 +1,70 @@
-use super::expr::Expr;
-use std::collections::hash_set::HashSet;
-
-pub type Literal = i32;
-pub type Variable = usize;
+use super::clause::Clause;
+use super::expr::{apply_laws, Expr};
+use crate::sat::literal::Literal;
+use std::ops::{Index, IndexMut};
 
 pub type DecisionLevel = u32;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Clause {
-    pub literals: Vec<i32>,
-    pub watched: (usize, usize),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct CNF {
+    pub clauses: Vec<Clause>,
+    pub num_vars: usize,
 }
 
-impl Clause {
-    pub fn new(literals: Vec<i32>) -> Self {
-        Clause {
-            literals: literals.clone(),
-            watched: if literals.len() > 1 {
-                (0, 1)
-            } else {
-                (0, 0)
-            },
-        }
+impl Index<usize> for CNF {
+    type Output = Clause;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.clauses[index]
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct CNF(Vec<Clause>);
+impl IndexMut<usize> for CNF {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.clauses[index]
+    }
+}
 
 impl CNF {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
-        CNF(clauses
-            .into_iter()
-            .map(|c| 
-                Clause {
-                    literals: c.iter().map(|l| *l).collect(),
-                    watched: if c.len() > 1 {
-                        (0, 1)
-                    } else {
-                        (0, 0)
-                    },
-                }
-    )
-            .collect())
+        let clauses: Vec<_> = clauses.into_iter().map(Clause::new).collect();
+
+        let num_vars = clauses
+            .iter()
+            .flat_map(|c| c.iter())
+            .map(|l| l.var)
+            .max()
+            .unwrap_or(0);
+
+        Self { clauses, num_vars }
     }
 
-    pub fn clauses(&self) -> Vec<Clause> {
-        self.0.clone()
-    }
-
-    pub fn all_variables(&self) -> Vec<usize> {
-        let literals = self.0.iter().map(|c| c.literals.iter().map(|l| var_of_lit(*l))).flatten().collect();
-        literals
-    }
-    
     pub fn iter(&self) -> impl Iterator<Item = &Clause> {
-        self.0.iter()
+        self.clauses.iter()
     }
-}
 
-pub fn var_of_lit(l: Literal) -> Variable {
-    l.abs() as Variable
-}
-
-pub fn neg_lit(l: Literal) -> Literal {
-    -l
-}
-
-pub fn demorgans_laws(expr: &Expr) -> Expr {
-    match expr {
-        Expr::Not(e) => match *e.clone() {
-            Expr::Var(i) => Expr::Not(Box::new(Expr::Var(i))),
-            Expr::Not(e) => *e.clone(),
-            Expr::And(e1, e2) => Expr::Or(
-                Box::new(demorgans_laws(&Expr::Not(e1))),
-                Box::new(demorgans_laws(&Expr::Not(e2))),
-            ),
-            Expr::Or(e1, e2) => Expr::And(
-                Box::new(demorgans_laws(&Expr::Not(e1))),
-                Box::new(demorgans_laws(&Expr::Not(e2))),
-            ),
-            Expr::Val(b) => Expr::Val(!b),
-        },
-        Expr::And(e1, e2) => Expr::And(Box::new(demorgans_laws(e1)), Box::new(demorgans_laws(e2))),
-        Expr::Or(e1, e2) => Expr::Or(Box::new(demorgans_laws(e1)), Box::new(demorgans_laws(e2))),
-        Expr::Val(b) => Expr::Val(*b),
-        Expr::Var(i) => Expr::Var(*i),
-        _ => panic!("Not implemented"),
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Clause> {
+        self.clauses.iter_mut()
     }
-}
 
-pub fn distributive_laws(expr: &Expr) -> Expr {
-    let expr = expr.clone();
-    match expr {
-        Expr::And(e1, e2) => {
-            let e1 = distributive_laws(&*e1);
-            let e2 = distributive_laws(&*e2);
-            match e1 {
-                Expr::Or(e11, e12) => Expr::Or(
-                    Box::new(distributive_laws(&Expr::And(
-                        e11.clone(),
-                        Box::from(e2.clone()),
-                    ))),
-                    Box::new(distributive_laws(&Expr::And(e12, Box::from(e2)))),
-                ),
-                _ => match e2 {
-                    Expr::Or(e21, e22) => Expr::Or(
-                        Box::new(distributive_laws(&Expr::And(
-                            Box::from(e1.clone()),
-                            e21.clone(),
-                        ))),
-                        Box::new(distributive_laws(&Expr::And(
-                            Box::from(e1.clone()),
-                            e22.clone(),
-                        ))),
-                    ),
-                    _ => Expr::And(Box::new(e1), Box::new(e2)),
-                },
-            }
-        }
-        Expr::Or(e1, e2) => Expr::Or(
-            Box::new(distributive_laws(&*e1)),
-            Box::new(distributive_laws(&*e2)),
-        ),
-        Expr::Val(b) => Expr::Val(b),
-        Expr::Var(i) => Expr::Var(i),
-        _ => panic!("Not implemented"),
+    pub fn len(&self) -> usize {
+        self.clauses.len()
     }
-}
 
-pub fn apply_laws(expr: &Expr) -> Expr {
-    let mut expr = expr.clone();
-    loop {
-        let new_expr = distributive_laws(&demorgans_laws(&expr));
-        if new_expr == expr {
-            break;
-        }
-        expr = new_expr;
+    pub fn is_empty(&self) -> bool {
+        self.clauses.is_empty()
     }
-    expr
 }
 
 pub fn to_cnf(expr: &Expr) -> CNF {
     let expr = apply_laws(expr);
     let clauses = to_clauses(&expr);
-    CNF::new(clauses.iter().map(|c| c.literals.clone()).collect())
+    CNF::new(
+        clauses
+            .iter()
+            .map(|c| c.iter().map(|l| l.into()).collect())
+            .collect(),
+    )
 }
 
 fn to_clauses(expr: &Expr) -> Vec<Clause> {
@@ -167,24 +87,50 @@ fn to_clause(expr: &Expr) -> Clause {
             c1.literals.extend(c2.literals);
             c1
         }
-        e => Clause::new(
-            vec![to_literal(e)],
-        ),
+        e => Clause::new(vec![to_literal(e).var as i32]),
     }
 }
 
 fn to_literal(expr: &Expr) -> Literal {
     match expr {
-        Expr::Var(i) => *i as Literal,
+        Expr::Var(i) => Literal::new(*i, false),
         Expr::Not(e) => -to_literal(e),
         _ => panic!("Not a literal"),
     }
 }
 
-pub fn add_clause(cnf: &mut CNF, clause: Clause) {
-    cnf.0.push(clause);
+fn to_expr(clause: Clause) -> Expr {
+    let mut iter = clause.iter();
+    let first = iter.next().unwrap();
+    let mut expr = to_expr_literal(*first);
+    for literal in iter {
+        expr = Expr::Or(Box::new(expr), Box::new(to_expr_literal(*literal)));
+    }
+    expr
 }
 
-pub fn is_negative(l: Literal) -> bool {
-    l < 0
+fn to_expr_literal(literal: Literal) -> Expr {
+    if literal.negated {
+        Expr::Not(Box::new(Expr::Var(literal.var)))
+    } else {
+        Expr::Var(literal.var)
+    }
+}
+
+impl From<Expr> for CNF {
+    fn from(expr: Expr) -> Self {
+        to_cnf(&expr)
+    }
+}
+
+impl From<CNF> for Expr {
+    fn from(cnf: CNF) -> Self {
+        let mut iter = cnf.iter();
+        let first = iter.next().unwrap();
+        let mut expr = to_expr(first.clone());
+        for clause in iter {
+            expr = Expr::And(Box::new(expr), Box::new(to_expr(clause.clone())));
+        }
+        expr
+    }
 }

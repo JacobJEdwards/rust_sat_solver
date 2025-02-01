@@ -194,14 +194,16 @@ pub enum Size {
     TwentyFive = 25,
 }
 
-impl From<usize> for Size {
-    fn from(size: usize) -> Self {
-        match size {
-            4 => Size::Four,
-            9 => Size::Nine,
-            16 => Size::Sixteen,
-            25 => Size::TwentyFive,
-            _ => panic!("Invalid size"),
+impl TryFrom<usize> for Size {
+    type Error = ();
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            4 => Ok(Size::Four),
+            9 => Ok(Size::Nine),
+            16 => Ok(Size::Sixteen),
+            25 => Ok(Size::TwentyFive),
+            _ => Err(()),
         }
     }
 }
@@ -236,7 +238,7 @@ impl Variable {
     }
 
     pub fn encode(&self, size: Size) -> usize {
-        let board_size = size.clone() as usize;
+        let board_size = size as usize;
         let row = self.row;
         let col = self.col;
         let num = self.num;
@@ -260,11 +262,13 @@ fn generate_cell_clauses(size: usize) -> Vec<Vec<i32>> {
     let mut clauses = vec![];
     for row in 1..=size {
         for col in 1..=size {
-            let mut clause = vec![];
-            for num in 1..=size {
-                let var = Variable::new(row, col, num);
-                clause.push(var.encode(Size::from(size)) as i32);
-            }
+            let clause = (1..=size)
+                .map(|num| {
+                    Variable::new(row, col, num).encode(Size::try_from(size).expect("Invalid size"))
+                        as i32
+                })
+                .collect();
+
             clauses.push(clause);
         }
     }
@@ -280,13 +284,14 @@ fn generate_row_clauses(size: usize) -> Vec<Vec<i32>> {
                     if col1 > col2 {
                         continue;
                     }
-                    let mut clause = vec![];
 
                     let var1 = Variable::new(row, col1, num);
                     let var2 = Variable::new(row, col2, num);
-                    clause.push(-(var1.encode(Size::from(size)) as i32));
-                    clause.push(-(var2.encode(Size::from(size)) as i32));
-                    clauses.push(clause);
+
+                    clauses.push(vec![
+                        -(var1.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                        -(var2.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                    ]);
                 }
             }
         }
@@ -303,14 +308,13 @@ fn generate_col_clauses(size: usize) -> Vec<Vec<i32>> {
                     if row1 > row2 {
                         continue;
                     }
-                    let mut clause = vec![];
-
                     let var1 = Variable::new(row1, col, num);
                     let var2 = Variable::new(row2, col, num);
-                    clause.push(-(var1.encode(Size::from(size)) as i32));
-                    clause.push(-(var2.encode(Size::from(size)) as i32));
 
-                    clauses.push(clause);
+                    clauses.push(vec![
+                        -(var1.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                        -(var2.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                    ]);
                 }
             }
         }
@@ -339,8 +343,10 @@ fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>>
                             continue;
                         }
                         clauses.push(vec![
-                            -(var1.encode(Size::from(board_size)) as i32),
-                            -(var2.encode(Size::from(board_size)) as i32),
+                            -(var1.encode(Size::try_from(board_size).expect("Invalid size"))
+                                as i32),
+                            -(var2.encode(Size::try_from(board_size).expect("Invalid size"))
+                                as i32),
                         ]);
                     }
                 }
@@ -356,7 +362,9 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
         for (c, &n) in row.iter().enumerate() {
             if n != 0 {
                 let var = Variable::new(r + 1, c + 1, n);
-                clauses.push(vec![var.encode(Size::from(size)) as i32]);
+                clauses.push(vec![
+                    var.encode(Size::try_from(size).expect("Invalid size")) as i32,
+                ]);
             }
         }
     }
@@ -366,8 +374,10 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
 impl Sudoku {
     pub fn new(board: Board) -> Self {
         let size = board.0.len();
-        let size = Size::from(size);
-        Sudoku { board, size }
+        Sudoku {
+            board,
+            size: Size::try_from(size).expect("Invalid size"),
+        }
     }
 
     pub fn decode_solution(&self, solutions: Vec<i32>) -> Sudoku {
@@ -408,7 +418,6 @@ impl Sudoku {
             .chain(pre_filled_clauses)
             .collect();
 
-        println!("Clauses: {:?}", clauses);
         sat::cnf::CNF::new(clauses)
     }
 

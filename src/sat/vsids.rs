@@ -2,15 +2,16 @@ use crate::sat::assignment::Assignment;
 use std::collections::hash_map::HashMap;
 use std::collections::HashSet;
 
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct VSIDS(HashMap<usize, f64>);
 
 const DEFAULT_DECAY: f64 = 0.95;
 
 impl VSIDS {
-    pub fn new() -> Self {
-        VSIDS(HashMap::new())
+    pub fn new(vars: &[usize]) -> Self {
+        let mut vsids = VSIDS(HashMap::new());
+        vsids.bumps(vars);
+        vsids
     }
 
     pub fn decay(&mut self, decay: f64) {
@@ -29,7 +30,7 @@ impl VSIDS {
             self.bump(i);
         }
     }
-    
+
     pub fn bumps_set(&mut self, vars: &HashSet<usize>) {
         for i in vars {
             self.bump(*i);
@@ -57,7 +58,7 @@ impl VSIDS {
         let mut max_i = None;
 
         for (i, v) in self.0.iter() {
-            if *v > max && assignment.get(*i).is_none() {
+            if *v > max && assignment[*i].is_unassigned() {
                 max = *v;
                 max_i = Some(*i);
             }

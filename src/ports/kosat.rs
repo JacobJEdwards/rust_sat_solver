@@ -1,17 +1,16 @@
-use std::cmp::PartialEq;
-use std::ops::Not;
-use std::collections::binary_heap::BinaryHeap;
+use core::cmp::PartialEq;
+use core::ops::Not;
 use std::collections::HashSet;
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 /// mod clause
 type Lit = i32;
 
-fn variable(lit: Lit) -> i32 {
-    lit / 2
+const fn variable(lit: Lit) -> i32 {
+    lit >> 1
 }
 
-fn negative(v: i32) -> Lit {
+const fn negative(v: i32) -> Lit {
     v * 2 + 1
 }
 
@@ -19,7 +18,7 @@ fn positive(v: i32) -> Lit {
     v * 2
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Clause {
     pub literals: Vec<Lit>,
     pub deleted: bool,
@@ -27,7 +26,7 @@ pub struct Clause {
 }
 
 impl Clause {
-    pub fn new(literals: Vec<Lit>) -> Self {
+    pub const fn new(literals: Vec<Lit>) -> Self {
         Clause {
             literals,
             deleted: false,
@@ -83,7 +82,7 @@ struct Restarter {
 }
 
 impl Restarter {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Restarter {
             luby_multiplier_constant: 50,
             restart_number: 50,
@@ -126,12 +125,12 @@ impl Restarter {
 }
 
 /// mod var selector
-pub trait VariableSelector: Clone + PartialEq + Debug {
+trait VariableSelector: Clone + PartialEq + Debug {
     fn new() -> Self where Self: Sized;
 
     fn init_assumptions(&mut self, assumptions: Vec<Lit>);
     fn build(&mut self, clauses: Vec<Clause>);
-    fn next_decision(&mut self, vars: &Vec<VarState>, level: i32) -> i32;
+    fn next_decision(&mut self, vars: &[VarState], level: i32) -> i32;
     fn add_variable(&mut self);
     fn update(&mut self, lemma: &Clause);
     fn backtrack(&mut self, variable: i32);
@@ -150,7 +149,7 @@ struct VSIDS {
 }
 
 impl VSIDS {
-    fn max_var(&self, vars: &Vec<VarState>) -> Lit {
+    fn max_var(&self, vars: &[VarState]) -> Lit {
         let mut max = -1.0;
         let mut max_var = 0;
         for (i, var) in vars.iter().enumerate() {
@@ -194,14 +193,14 @@ impl VariableSelector for VSIDS {
         // TODO: binary heap
     }
 
-    fn next_decision(&mut self, vars: &Vec<VarState>, level: i32) -> i32 {
+    fn next_decision(&mut self, vars: &[VarState], _: i32) -> i32 {
         if self.assumptions.iter().any(|&lit| vars[variable(lit) as usize].value == VarValue::FALSE) {
             return -1;
         }
 
-        let max = self.max_var(&vars.clone());
-        self.assumptions.iter().find(|&&lit| vars[variable(lit) as usize].value ==
-            VarValue::UNDEFINED).unwrap_or(&max).clone()
+        let max = self.max_var(vars);
+        *self.assumptions.iter().find(|&&lit| vars[variable(lit) as usize].value ==
+            VarValue::UNDEFINED).unwrap_or(&max)
     }
 
     fn add_variable(&mut self) {
@@ -221,7 +220,7 @@ impl VariableSelector for VSIDS {
             self.number_of_conflicts = 0;
             if self.activity_inc > self.activity_limit {
                 for i in 0..self.activity.len() {
-                    self.activity[i] = self.activity[i] / self.activity_inc;
+                    self.activity[i] /= self.activity_inc;
                 }
                 self.activity_inc = 1.0;
             }
@@ -235,7 +234,7 @@ impl VariableSelector for VSIDS {
 
 /// mod cdcl
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Solvertype {
+pub enum Solvertype {
     Incremental,
     NonIncremental,
 }
@@ -243,12 +242,10 @@ enum Solvertype {
 #[derive(Debug, PartialEq, Clone)]
 pub struct CDCL {
     pub solver_type: Solvertype,
-
-    // initial constraints
     pub constraints : Vec<Clause>,
     pub learned: Vec<Clause>,
     pub number_of_variables: usize,
-    pub vars: Vec<VarState>,
+    vars: Vec<VarState>,
     pub trail: Vec<Lit>,
     pub qhead: usize,
     pub watchers: Vec<Vec<Clause>>,
@@ -257,8 +254,8 @@ pub struct CDCL {
     pub level: usize,
     pub minimise_marks: Vec<usize>,
     pub mark: usize,
-    pub restart: Restarter,
-    pub selector: VSIDS,
+    restart: Restarter,
+    selector: VSIDS,
     pub polarity: Vec<VarValue>,
     pub seen: Vec<bool>,
     pub assumptions: Vec<i32>,
@@ -287,7 +284,7 @@ impl CDCL {
             assumptions: Vec::new(),
         };
         solver.reserve_vars(initial_vars_num);
-        let initial_clauses: Vec<Clause> = initial.iter().map(|c| c.renumber()).collect();
+        let initial_clauses: Vec<Clause> = initial.iter().map(Clause::renumber).collect();
         for clause in initial_clauses {
             solver.new_clause(&mut clause.clone());
         }
@@ -365,7 +362,7 @@ impl CDCL {
             return;
         }
 
-        clause.literals = clause.literals.iter().filter(|&lit| self.get_value(*lit) != VarValue::FALSE).cloned().collect();
+        clause.literals.retain(|lit| self.get_value(*lit) != VarValue::FALSE);
         // if (clause.any { (it xor 1) in clause }) {
         //     return
         // }
@@ -534,7 +531,7 @@ impl CDCL {
                     continue;
                 }
                 to_keep.push(clause.clone());
-                if conflict != None {
+                if conflict.is_some() {
                     continue;
                 }
                 if variable(clause.literals[0]) == variable(lit) {
@@ -561,7 +558,7 @@ impl CDCL {
                 }
             }
             self.watchers[(lit ^ 1) as usize] = to_keep;
-            if conflict != None {
+            if conflict.is_some() {
                 break
             }
         }
@@ -585,12 +582,12 @@ impl CDCL {
         let literals = clause.literals.iter().filter(|&l| {
             let v = variable(*l);
             let reason = self.vars[v as usize].reason.clone();
-            if reason == None {
+            if reason.is_none() {
                 return false;
             }
             let reason = reason.unwrap();
             reason.literals.iter().all(|&l| self.minimise_marks[l as usize] == self.mark)
-        }).cloned().collect();
+        }).copied().collect();
 
         Clause::new(literals)
     }
@@ -643,11 +640,7 @@ impl CDCL {
                 positive(v)
             };
             lemma.insert(to_insert);
-            println!("Lemma: {:?}", lemma);
-            println!("Conflict: {:?}", conflict);
             let mut new_clause = self.minimise(&Clause::new(lemma.iter().cloned().collect()));
-            println!("Minimised: {:?}", new_clause);
-            println!("Variable: {}", v);
             let uip_index = new_clause.literals.iter().position(|&lit| variable(lit) == v).unwrap();
             new_clause.literals.swap(0, uip_index);
             self.seen[v as usize] = false;
@@ -658,7 +651,8 @@ impl CDCL {
         if fin.literals.len() > 1 {
             // val secondMax = newClause.drop(1).indices.maxByOrNull { vars[variable(newClause[it + 1])].level } ?: 0
             // newClause.swap(1, secondMax + 1)
-            let second_max = fin.literals.iter().skip(1).enumerate().max_by_key(|&(i, &lit)| self.vars[variable(lit) as usize].level).unwrap().0;
+            let second_max = fin.literals.iter().skip(1).enumerate().max_by_key(|&(_, &lit)| self
+                .vars[variable(lit) as usize].level).unwrap().0;
             fin.literals.swap(1, second_max + 1);
         }
         fin

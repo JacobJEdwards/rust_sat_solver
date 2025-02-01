@@ -1,6 +1,7 @@
 pub mod assignment;
+mod clause;
 pub mod cnf;
 pub mod expr;
-pub mod vsids;
-pub mod solver;
+mod literal;
 pub mod state;
+pub mod vsids;
