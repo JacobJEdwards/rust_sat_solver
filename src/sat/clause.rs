@@ -1,29 +1,17 @@
-// #![warn(
-//     clippy::all,
-//     clippy::restriction,
-//     clippy::pedantic,
-//     clippy::nursery,
-//     clippy::cargo,
-// )]
 use crate::sat::literal::Literal;
 use core::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Clause {
     pub literals: Vec<Literal>,
-    pub watched: (usize, usize), // move to be in literals
     pub lbd: u32,
     pub deleted: bool,
 }
 
 impl Clause {
-    pub fn new(literals: Vec<i32>) -> Self {
-        let len = literals.len();
-        let literals = literals.into_iter().map(Literal::from).collect();
-
+    pub fn new(literals: Vec<Literal>) -> Self {
         Self {
             literals,
-            watched: if len > 1 { (0, 1) } else { (0, 0) },
             lbd: 0,
             deleted: false,
         }
@@ -60,6 +48,10 @@ impl Clause {
     pub fn delete(&mut self) {
         self.deleted = true;
     }
+    
+    pub fn remove_literal(&mut self, idx: usize) {
+        self.literals.remove(idx);
+    }
 }
 
 impl Index<usize> for Clause {
@@ -84,23 +76,22 @@ impl From<&Clause> for Vec<Literal> {
 
 impl From<Vec<i32>> for Clause {
     fn from(literals: Vec<i32>) -> Self {
+        let literals = literals.into_iter().map(Literal::from).collect();
         Self::new(literals)
     }
 }
 
 impl From<&Vec<i32>> for Clause {
     fn from(literals: &Vec<i32>) -> Self {
-        Self::new(literals.clone())
+        let literals: Vec<_> = literals.iter().map(|l| Literal::from(*l)).collect();
+        Self::new(literals)
     }
 }
 
 impl From<Vec<Literal>> for Clause {
     fn from(literals: Vec<Literal>) -> Self {
-        let watched = if literals.len() > 1 { (0, 1) } else { (0, 0) };
-
         Self {
             literals,
-            watched,
             lbd: 0,
             deleted: false,
         }
@@ -109,10 +100,8 @@ impl From<Vec<Literal>> for Clause {
 
 impl From<&Vec<Literal>> for Clause {
     fn from(literals: &Vec<Literal>) -> Self {
-        let watched = if literals.len() > 1 { (0, 1) } else { (0, 0) };
         Self {
             literals: literals.clone(),
-            watched,
             lbd: 0,
             deleted: false,
         }
@@ -125,13 +114,13 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let clause = Clause::new(vec![1, 2, 3]);
+        let clause = Clause::from(vec![1, 2, 3]);
         assert_eq!(clause.len(), 3);
     }
 
     #[test]
     fn test_iter() {
-        let clause = Clause::new(vec![1, 2, 3]);
+        let clause = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter();
         assert_eq!(iter.next(), Some(&Literal::from(1)));
         assert_eq!(iter.next(), Some(&Literal::from(2)));
@@ -141,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_iter_mut() {
-        let mut clause = Clause::new(vec![1, 2, 3]);
+        let mut clause = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter_mut();
         assert_eq!(iter.next(), Some(&mut Literal::from(1)));
         assert_eq!(iter.next(), Some(&mut Literal::from(2)));
@@ -151,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_swap() {
-        let mut clause = Clause::new(vec![1, 2, 3]);
+        let mut clause = Clause::from(vec![1, 2, 3]);
         clause.swap(0, 2);
         assert_eq!(clause[0], Literal::from(3));
         assert_eq!(clause[1], Literal::from(2));

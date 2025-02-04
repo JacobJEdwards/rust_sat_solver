@@ -1,6 +1,5 @@
 use crate::sat::assignment::Assignment;
 use std::collections::hash_map::HashMap;
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct VSIDS(HashMap<usize, f64>);
@@ -10,12 +9,12 @@ const DEFAULT_DECAY: f64 = 0.95;
 impl VSIDS {
     pub fn new(vars: &[usize]) -> Self {
         let mut vsids = VSIDS(HashMap::new());
-        vsids.bumps(vars);
+        vsids.bumps(vars.iter().copied());
         vsids
     }
 
     pub fn decay(&mut self, decay: f64) {
-        for (_, v) in self.0.iter_mut() {
+        for (_, v) in self.iter_mut() {
             *v *= decay;
         }
     }
@@ -25,15 +24,9 @@ impl VSIDS {
         *v += 1.0;
     }
 
-    pub fn bumps(&mut self, vars: &[usize]) {
-        for &i in vars {
-            self.bump(i);
-        }
-    }
-
-    pub fn bumps_set(&mut self, vars: &HashSet<usize>) {
+    pub fn bumps<T: IntoIterator<Item = usize>>(&mut self, vars: T) {
         for i in vars {
-            self.bump(*i);
+            self.bump(i);
         }
     }
 
@@ -64,5 +57,13 @@ impl VSIDS {
             }
         }
         max_i
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item = (usize, f64)> + '_ {
+        self.0.iter().map(|(&k, &v)| (k, v))
+    }
+    
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&usize, &mut f64)> {
+        self.0.iter_mut()
     }
 }

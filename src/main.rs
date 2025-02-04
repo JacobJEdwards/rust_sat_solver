@@ -2,10 +2,10 @@ use crate::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN, EXAMPLE_TWENTY_FIVE}
 
 mod sat;
 mod sudoku;
+mod nonogram;
 
 fn main() {
     // time
-    let time = std::time::Instant::now();
 
     let board = EXAMPLE_SIXTEEN
         .iter()
@@ -17,6 +17,7 @@ fn main() {
     let cnf = sudoku.to_cnf();
     let mut state = sat::state::State::new(cnf);
 
+    let time = std::time::Instant::now();
     let sol = state.solve();
     let elapsed = time.elapsed();
 

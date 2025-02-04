@@ -1,4 +1,5 @@
 use crate::sat;
+use crate::sat::assignment::Solutions;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Board(Vec<Vec<usize>>);
@@ -380,15 +381,15 @@ impl Sudoku {
         }
     }
 
-    pub fn decode_solution(&self, solutions: Vec<i32>) -> Sudoku {
-        let size = self.size as usize;
+    pub fn decode_solution(&self, solutions: Solutions) -> Sudoku {
+        let size = self.size.into();
         let mut board = vec![vec![0; size]; size];
         for row in 1..=size {
             for col in 1..=size {
                 for num in 1..=size {
                     let var = Variable::new(row, col, num);
                     let encoded = var.encode(self.size);
-                    if solutions.contains(&(encoded as i32)) {
+                    if solutions.contains(&encoded) {
                         board[row - 1][col - 1] = num;
                     }
                 }

@@ -32,6 +32,24 @@ impl VarState {
     }
 }
 
+impl From<VarState> for Option<bool> {
+    fn from(s: VarState) -> Self {
+        match s {
+            VarState::Assigned(b) => Some(b),
+            _ => None,
+        }
+    }
+}
+
+impl From<Option<bool>> for VarState {
+    fn from(b: Option<bool>) -> Self {
+        match b {
+            Some(b) => VarState::Assigned(b),
+            None => VarState::Unassigned,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Assignment(Vec<VarState>);
 
@@ -49,7 +67,7 @@ impl IndexMut<usize> for Assignment {
     }
 }
 
-pub type Solutions = Vec<i32>;
+pub type Solutions = Vec<usize>;
 
 // impl Solutions {
 //     pub fn iter(&self) -> impl Iterator<Item = &usize> {
@@ -73,7 +91,19 @@ impl Assignment {
     }
 
     pub fn set(&mut self, lit: usize, b: bool) {
-        self.0[lit] = VarState::Assigned(b);
+        self[lit] = VarState::Assigned(b);
+    }
+    
+    pub fn assign(&mut self, l: Literal) {
+        self.set(l.variable(), l.polarity());
+    }
+    
+    pub fn unassign(&mut self, i: usize) {
+        self[i] = VarState::Unassigned;
+    }
+    
+    pub fn is_assigned(&self, i: usize) -> bool {
+        self.0[i].is_assigned()
     }
 
     pub fn get_solutions(&self) -> Solutions {
@@ -81,7 +111,7 @@ impl Assignment {
             .iter()
             .enumerate()
             .filter_map(|(i, s)| match s {
-                VarState::Assigned(true) => Some(i as i32),
+                VarState::Assigned(true) => Some(i),
                 _ => None,
             })
             .collect()
@@ -99,19 +129,10 @@ impl Assignment {
     }
 
     pub fn var_value(&self, i: usize) -> Option<bool> {
-        match self.0.get(i) {
-            Some(VarState::Assigned(b)) => Some(*b),
-            _ => None,
-        }
+        self[i].into()
     }
 
     pub fn literal_value(&self, l: Literal) -> Option<bool> {
-        let i = l.var;
-        let b = self.var_value(i)?;
-        if l.negated {
-            Some(!b)
-        } else {
-            Some(b)
-        }
+        self.var_value(l.variable()).map(|b| b ^ l.is_negated())
     }
 }

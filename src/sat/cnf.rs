@@ -3,7 +3,7 @@ use super::expr::{apply_laws, Expr};
 use crate::sat::literal::Literal;
 use std::ops::{Index, IndexMut};
 
-pub type DecisionLevel = u32;
+pub type DecisionLevel = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct CNF {
@@ -27,12 +27,12 @@ impl IndexMut<usize> for CNF {
 
 impl CNF {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
-        let clauses: Vec<_> = clauses.into_iter().map(Clause::new).collect();
+        let clauses: Vec<_> = clauses.into_iter().map(Clause::from).collect();
 
         let num_vars = clauses
             .iter()
             .flat_map(|c| c.iter())
-            .map(|l| l.var)
+            .map(|l| l.variable())
             .max()
             .unwrap_or(0);
 
@@ -87,7 +87,7 @@ fn to_clause(expr: &Expr) -> Clause {
             c1.literals.extend(c2.literals);
             c1
         }
-        e => Clause::new(vec![to_literal(e).var as i32]),
+        e => Clause::new(vec![to_literal(e)]),
     }
 }
 
@@ -110,10 +110,10 @@ fn to_expr(clause: Clause) -> Expr {
 }
 
 fn to_expr_literal(literal: Literal) -> Expr {
-    if literal.negated {
-        Expr::Not(Box::new(Expr::Var(literal.var)))
+    if literal.is_negated() {
+        Expr::Not(Box::new(Expr::Var(literal.variable())))
     } else {
-        Expr::Var(literal.var)
+        Expr::Var(literal.variable())
     }
 }
 

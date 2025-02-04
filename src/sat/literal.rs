@@ -2,38 +2,54 @@ use core::ops::{Neg, Not};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Literal {
-    pub var: usize,
-    pub negated: bool,
+    var: usize,
+    polarity: bool,
 }
 
 impl Literal {
-    pub const fn new(var: usize, negated: bool) -> Self {
-        Self { var, negated }
+    pub const fn new(var: usize, polarity: bool) -> Self {
+        Self { var, polarity }
     }
 
     pub const fn negated(&self) -> Self {
         Self {
             var: self.var,
-            negated: !self.negated,
+            polarity: !self.polarity,
         }
+    }
+    
+    pub fn is_negated(&self) -> bool {
+        !self.polarity
+    }
+    
+    pub fn is_positive(&self) -> bool {
+        self.polarity
+    }
+    
+    pub fn polarity(&self) -> bool {
+        self.polarity
+    }
+    
+    pub fn variable(&self) -> usize {
+        self.var
     }
 }
 
 impl From<i32> for Literal {
     fn from(l: i32) -> Self {
-        let negated = l.is_negative();
+        let polarity = l.is_positive();
         let var = l.unsigned_abs() as usize;
 
-        Self { var, negated }
+        Self { var, polarity }
     }
 }
 
 impl From<&Literal> for i32 {
     fn from(l: &Literal) -> Self {
-        if l.negated {
-            -(l.var as i32)
-        } else {
+        if l.polarity {
             l.var as i32
+        } else {
+            -(l.var as i32)
         }
     }
 }

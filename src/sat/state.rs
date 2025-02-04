@@ -1,71 +1,22 @@
-use super::assignment::{Assignment, Solutions};
-use super::cnf;
-use super::vsids::VSIDS;
+use crate::sat::assignment::{Assignment, Solutions};
+use crate::sat::cnf;
+use crate::sat::vsids::VSIDS;
 use crate::sat::clause::Clause;
 use crate::sat::cnf::CNF;
+use crate::sat::conflict_analysis::{analyse_conflict, Conflict};
 use crate::sat::literal::Literal;
-use std::collections::hash_map::HashMap;
-use std::collections::hash_set::HashSet;
-
-pub type Trail = Vec<Literal>;
-
-pub type Reason = Clause;
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash, PartialOrd, Ord)]
-pub struct PropagationQueue(Vec<(usize, bool, Option<Reason>)>);
-
-impl PropagationQueue {
-    pub fn new(cnf: &CNF) -> Self {
-        let q = cnf
-            .iter()
-            .filter(|c| c.is_unit())
-            .map(|c| (c[0].var, !c[0].negated, Some(c.clone())))
-            .collect();
-
-        Self(q)
-    }
-
-    pub fn push(&mut self, p: (usize, bool, Option<Reason>)) {
-        self.0.push(p);
-    }
-
-    pub fn pop(&mut self) -> Option<(usize, bool, Option<Reason>)> {
-        self.0.pop()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct WatchedLiterals(HashMap<usize, HashSet<usize>>);
-
-impl WatchedLiterals {
-    pub fn new(cnf: &CNF) -> Self {
-        let mut watched_literals = HashMap::new();
-        for (i, clause) in cnf.iter().enumerate() {
-            if !clause.is_unit() {
-                let a = clause.watched.0;
-                let b = clause.watched.1;
-
-                watched_literals
-                    .entry(clause.literals[a].var)
-                    .or_insert_with(HashSet::default)
-                    .insert(i);
-
-                watched_literals
-                    .entry(clause.literals[b].var)
-                    .or_insert_with(HashSet::default)
-                    .insert(i);
-            }
-        }
-        Self(watched_literals)
-    }
-}
+use crate::sat::watch::WatchedLiterals;
+use crate::sat::propagation::PropagationQueue;
+use crate::sat::trail::Trail;
+use crate::sat::trail::Reason;
+use crate::sat::trail::Reason::Long;
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SavedPhases(Vec<Option<bool>>);
 
 impl SavedPhases {
     fn new(n: usize) -> Self {
-        Self(vec![Default::default(); n + 1])
+        Self(vec![None; n + 1])
     }
 
     fn save(&mut self, i: usize, b: bool) {
@@ -95,8 +46,6 @@ pub struct State {
 
     pub trail: Trail,
 
-    pub variables: HashSet<usize>,
-
     pub propagation_queue: PropagationQueue,
 }
 
@@ -106,12 +55,13 @@ impl State {
         let vars = cnf
             .clauses
             .iter()
-            .flat_map(|c| c.iter().map(|l| l.var))
+            .flat_map(|c| c.iter().map(|l| l.variable()))
             .collect::<Vec<_>>();
         let vsids = VSIDS::new(&vars);
 
         State {
             assignment: Assignment::new(cnf.num_vars),
+            trail: Trail::new(&cnf),
             watched_literals: wl,
             propagation_queue: PropagationQueue::new(&cnf),
             saved_phases: SavedPhases::new(cnf.num_vars),
@@ -119,8 +69,6 @@ impl State {
             learned_clauses: Vec::default(),
             vsids,
             decision_level: 0,
-            trail: Vec::default(),
-            variables: vars.into_iter().collect(),
         }
     }
 
@@ -128,94 +76,86 @@ impl State {
         self.assignment.get_solutions()
     }
 
-    fn find_new_watch(&self, first: Literal, second: Literal, clause_idx: usize) -> Option<usize> {
+    fn find_new_watch(&self, clause_idx: usize) -> Option<usize> {
         let clause = &self.cnf[clause_idx];
 
-        clause.iter().position(|&l| {
-            l != first && l != second && self.assignment.literal_value(l) != Some(false)
-        })
+        clause.iter().skip(2).position(|&l| {
+            self.assignment.literal_value(l) != Some(false)
+        }).map(|i| i + 2)
     }
 
-    fn handle_new_watch(&mut self, i: usize, clause_idx: usize, old: usize, new: Literal) {
-        let clause = &mut self.cnf[clause_idx];
-
-        clause.watched = (i, old);
-        let l = clause[i];
-
-        if let Some(a_clauses) = self.watched_literals.0.get_mut(&(new.var)) {
-            a_clauses.insert(clause_idx);
-        }
-
-        // dont unwrap
-        if let Some(l_clauses) = self.watched_literals.0.get_mut(&(l.var)) {
-            l_clauses.insert(clause_idx);
-        }
+    fn handle_new_watch(&mut self, clause_idx: usize, new_lit_idx: usize) {
+        assert!(new_lit_idx >= 2);
+        
+        self.cnf[clause_idx].swap(1, new_lit_idx);
+        let new_lit = self.cnf[clause_idx][1];
+        let prev_lit = self.cnf[clause_idx][new_lit_idx];
+        self.watched_literals[new_lit].push(clause_idx);
+        self.watched_literals[prev_lit].retain(|&i| i != clause_idx);
     }
 
-    fn add_propagation(&mut self, var: usize, val: bool, clause_idx: usize) {
-        let clause = &self.cnf[clause_idx];
+    fn add_propagation(&mut self, lit: Literal, clause_idx: usize) {
         self.propagation_queue
-            .push((var, val, Some(clause.clone())));
+            .push((lit, Option::from(Long(clause_idx))));
     }
 
-    fn process_clause(&mut self, clause_idx: usize) -> Option<Clause> {
+    fn process_clause(&mut self, clause_idx: usize) -> Option<usize> {
         let clause = &self.cnf[clause_idx];
 
-        let (a, b) = clause.watched;
-        let first = clause.literals[a];
-        let second = clause.literals[b];
+        let first = clause[0];
+        let second = clause[1];
 
         let first_value = self.assignment.literal_value(first);
+        if let Some(true) = first_value { return None }
+        
         let second_value = self.assignment.literal_value(second);
-
+        
         match (first_value, second_value) {
-            (Some(true), _) | (_, Some(true)) | (None, None) => None,
-            (Some(false), Some(false)) => Some(clause.clone()),
+            (Some(false), Some(false)) => {
+                Some(clause_idx)
+            }
             (None, Some(false)) => {
-                self.handle_false(first, second, clause_idx, a);
+                self.handle_false(first, clause_idx);
                 None
             }
             (Some(false), None) => {
-                self.handle_false(second, first, clause_idx, b);
+                self.cnf[clause_idx].swap(0, 1); 
+                self.handle_false(second, clause_idx);
                 None
             }
+            (Some(true), _) | (_, Some(true)) | (None, None) => None,
         }
     }
 
-    fn handle_false(&mut self, left: Literal, right: Literal, clause_idx: usize, idx: usize) {
-        match self.find_new_watch(left, right, clause_idx) {
-            Some(i) => {
-                self.handle_new_watch(i, clause_idx, idx, right);
-            }
-            None => {
-                self.add_propagation(left.var, !left.negated, clause_idx);
-            }
+    fn handle_false(&mut self, other_lit: Literal, clause_idx: usize) {
+        match self.find_new_watch(clause_idx) {
+            Some(new_lit_idx) => self.handle_new_watch(clause_idx, new_lit_idx),
+            None => self.add_propagation(other_lit, clause_idx)
         };
     }
 
-    fn propagate_watch(&mut self, indices: &mut Vec<usize>) -> Option<Clause> {
-        while let Some(i) = indices.pop() {
-            if let Some(clause) = self.process_clause(i) {
-                return Some(clause);
+    fn propagate_watch(&mut self, indices: &[usize]) -> Option<usize> {
+        for &i in indices {
+            if let Some(c_ref) = self.process_clause(i) {
+                return Some(c_ref);
             }
         }
+        
         None
     }
 
-    fn propagate(&mut self) -> Option<Clause> {
-        while let Some((i, b, reason)) = self.propagation_queue.pop() {
-            self.assignment.set(i, b);
-            self.trail.push(Literal::new(i, !b));
-            let mut indices = self
-                .watched_literals
-                .0
-                .get(&i)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .collect::<Vec<_>>();
-            if let Some(clause) = self.propagate_watch(&mut indices) {
-                return Some(clause);
+    fn propagate(&mut self) -> Option<usize> {
+        while let Some((lit, _reason)) = self.propagation_queue.pop() {
+            if self.assignment.is_assigned(lit.variable()) {
+                continue;
+            }
+            
+            self.assignment.assign(lit);
+            self.trail.push(lit, self.decision_level, Reason::Unit(0));
+            let indices = &self.watched_literals[lit];
+            
+            if let Some(c_ref) = self.propagate_watch(&indices.clone()) {
+                return Some(c_ref);
             }
         }
 
@@ -223,16 +163,7 @@ impl State {
     }
 
     pub fn all_assigned(&self) -> bool {
-        let hash_set_assignment = self
-            .assignment
-            .get_all_assigned()
-            .into_iter()
-            .collect::<HashSet<_>>();
-        self.variables
-            .difference(&hash_set_assignment)
-            .peekable()
-            .peek()
-            .is_none()
+        self.trail.len() == self.cnf.num_vars
     }
 
     pub fn solve(&mut self) -> Option<Solutions> {
@@ -240,13 +171,28 @@ impl State {
             return Some(Solutions::default());
         }
 
-        if self.cnf.iter().any(|c| c.is_empty()) {
+        if self.cnf.iter().any(Clause::is_empty) {
             return None;
         }
 
         loop {
-            if let Some(c) = self.propagate() {
-                todo!("Conflict resolution");
+            if let Some(c_ref) = self.propagate() {
+                match analyse_conflict(&self.cnf, &self.trail, c_ref) {
+                    Conflict::Ground => return None,
+                    Conflict::Unit(clause) => {
+                        let lit = clause[0];
+                        self.decision_level += 1;
+                        self.propagation_queue.push((lit, None));
+                    }
+                    Conflict::Learned(dl, clause) => {
+                        self.vsids.bumps(clause.literals.iter().map(|l| l.variable()));
+                        self.learned_clauses.push(clause);
+                        self.trail.backstep_to(&mut self.assignment, dl);
+                    }
+                    Conflict::Restart(_) => {
+                        return None;
+                    }
+                }
             }
 
             if self.all_assigned() {
@@ -259,7 +205,7 @@ impl State {
             self.saved_phases.save(lit, next);
 
             self.decision_level += 1;
-            self.propagation_queue.push((lit, next, None));
+            self.propagation_queue.push((Literal::new(lit, !next), None));
         }
     }
 }

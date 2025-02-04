@@ -5,3 +5,7 @@ pub mod expr;
 mod literal;
 pub mod state;
 pub mod vsids;
+mod watch;
+mod propagation;
+mod trail;
+mod conflict_analysis;
