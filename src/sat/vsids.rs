@@ -1,14 +1,31 @@
-use crate::sat::assignment::Assignment;
-use std::collections::hash_map::HashMap;
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct VSIDS(HashMap<usize, f64>);
+use crate::sat::assignment::Assignment;
+use std::ops::{Index, IndexMut};
+// use std::collections::BinaryHeap;
+
+#[derive(Debug, Clone, PartialEq, Default, PartialOrd)]
+pub struct Vsids(Vec<f64>);
+
+impl Index<usize> for Vsids {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for Vsids {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
 
 const DEFAULT_DECAY: f64 = 0.95;
 
-impl VSIDS {
-    pub fn new(vars: &[usize]) -> Self {
-        let mut vsids = VSIDS(HashMap::new());
+impl Vsids {
+    #[must_use] pub fn new(num_vars: usize, vars: &[usize]) -> Self {
+        let mut vsids = Self(vec![0.0; num_vars + 1]);
         vsids.bumps(vars.iter().copied());
         vsids
     }
@@ -20,8 +37,7 @@ impl VSIDS {
     }
 
     pub fn bump(&mut self, i: usize) {
-        let v = self.0.entry(i).or_insert(0.0);
-        *v += 1.0;
+        self.0[i] += 1.0;
     }
 
     pub fn bumps<T: IntoIterator<Item = usize>>(&mut self, vars: T) {
@@ -30,8 +46,8 @@ impl VSIDS {
         }
     }
 
-    pub fn get(&self, i: usize) -> f64 {
-        *self.0.get(&i).unwrap_or(&0.0)
+    #[must_use] pub fn get(&self, i: usize) -> f64 {
+        self[i]
     }
 
     pub fn set(&mut self, i: usize, v: f64) {
@@ -46,24 +62,24 @@ impl VSIDS {
         self.decay(DEFAULT_DECAY);
     }
 
-    pub fn pick(&mut self, assignment: &Assignment) -> Option<usize> {
+    pub fn pick<A: Assignment>(&self, assignment: &A) -> Option<usize> {
         let mut max = 0.0;
         let mut max_i = None;
 
-        for (i, v) in self.0.iter() {
-            if *v > max && assignment[*i].is_unassigned() {
+        for (i, v) in self.0.iter().enumerate() {
+            if *v > max && assignment[i].is_unassigned() {
                 max = *v;
-                max_i = Some(*i);
+                max_i = Some(i);
             }
         }
         max_i
     }
-    
+
     pub fn iter(&self) -> impl Iterator<Item = (usize, f64)> + '_ {
-        self.0.iter().map(|(&k, &v)| (k, v))
+        self.0.iter().enumerate().map(|(k, &v)| (k, v))
     }
-    
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&usize, &mut f64)> {
-        self.0.iter_mut()
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut f64)> {
+        self.0.iter_mut().enumerate()
     }
 }

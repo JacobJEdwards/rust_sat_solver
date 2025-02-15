@@ -5,3 +5,10 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.25"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "bench"
+harness = false

@@ -1,3 +1,4 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use crate::sat::literal::Literal;
 use core::ops::{Index, IndexMut};
 
@@ -9,7 +10,7 @@ pub struct Clause {
 }
 
 impl Clause {
-    pub fn new(literals: Vec<Literal>) -> Self {
+    #[must_use] pub const fn new(literals: Vec<Literal>) -> Self {
         Self {
             literals,
             lbd: 0,
@@ -17,7 +18,7 @@ impl Clause {
         }
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use] pub fn len(&self) -> usize {
         self.literals.len()
     }
 
@@ -33,22 +34,22 @@ impl Clause {
         self.literals.swap(i, j);
     }
 
-    pub fn is_unit(&self) -> bool {
+    #[must_use] pub fn is_unit(&self) -> bool {
         self.len() == 1
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use] pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn is_deleted(&self) -> bool {
+    #[must_use] pub const fn is_deleted(&self) -> bool {
         self.deleted
     }
 
     pub fn delete(&mut self) {
         self.deleted = true;
     }
-    
+
     pub fn remove_literal(&mut self, idx: usize) {
         self.literals.remove(idx);
     }

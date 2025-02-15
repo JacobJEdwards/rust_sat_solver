@@ -1,3 +1,4 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
 use crate::sat::literal::Literal;
@@ -6,12 +7,12 @@ use std::ops::{Index, IndexMut};
 pub type DecisionLevel = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct CNF {
+pub struct Cnf {
     pub clauses: Vec<Clause>,
     pub num_vars: usize,
 }
 
-impl Index<usize> for CNF {
+impl Index<usize> for Cnf {
     type Output = Clause;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -19,20 +20,20 @@ impl Index<usize> for CNF {
     }
 }
 
-impl IndexMut<usize> for CNF {
+impl IndexMut<usize> for Cnf {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.clauses[index]
     }
 }
 
-impl CNF {
+impl Cnf {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
         let clauses: Vec<_> = clauses.into_iter().map(Clause::from).collect();
 
         let num_vars = clauses
             .iter()
-            .flat_map(|c| c.iter())
-            .map(|l| l.variable())
+            .flat_map(Clause::iter)
+            .map(Literal::variable)
             .max()
             .unwrap_or(0);
 
@@ -47,22 +48,22 @@ impl CNF {
         self.clauses.iter_mut()
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use] pub fn len(&self) -> usize {
         self.clauses.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use] pub fn is_empty(&self) -> bool {
         self.clauses.is_empty()
     }
 }
 
-pub fn to_cnf(expr: &Expr) -> CNF {
+#[must_use] pub fn to_cnf(expr: &Expr) -> Cnf {
     let expr = apply_laws(expr);
     let clauses = to_clauses(&expr);
-    CNF::new(
+    Cnf::new(
         clauses
             .iter()
-            .map(|c| c.iter().map(|l| l.into()).collect())
+            .map(|c| c.iter().map(std::convert::Into::into).collect())
             .collect(),
     )
 }
@@ -99,7 +100,7 @@ fn to_literal(expr: &Expr) -> Literal {
     }
 }
 
-fn to_expr(clause: Clause) -> Expr {
+fn to_expr(clause: &Clause) -> Expr {
     let mut iter = clause.iter();
     let first = iter.next().unwrap();
     let mut expr = to_expr_literal(*first);
@@ -117,20 +118,52 @@ fn to_expr_literal(literal: Literal) -> Expr {
     }
 }
 
-impl From<Expr> for CNF {
+impl From<Expr> for Cnf {
     fn from(expr: Expr) -> Self {
         to_cnf(&expr)
     }
 }
 
-impl From<CNF> for Expr {
-    fn from(cnf: CNF) -> Self {
+impl From<Cnf> for Expr {
+    fn from(cnf: Cnf) -> Self {
         let mut iter = cnf.iter();
         let first = iter.next().unwrap();
-        let mut expr = to_expr(first.clone());
+        let mut expr = to_expr(first);
         for clause in iter {
-            expr = Expr::And(Box::new(expr), Box::new(to_expr(clause.clone())));
+            expr = Self::And(Box::new(expr), Box::new(to_expr(clause)));
         }
         expr
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_cnf() {
+        let expr = Expr::Or(
+            Box::new(Expr::Var(1)),
+            Box::new(Expr::And(
+                Box::new(Expr::Var(2)),
+                Box::new(Expr::Var(3)),
+            )),
+        );
+        let cnf = to_cnf(&expr);
+        assert_eq!(cnf.len(), 2);
+    }
+
+    #[test]
+    fn test_to_expr() {
+        let clause = Clause::from(vec![1, 2, 3]);
+        let expr = to_expr(&clause);
+        assert_eq!(
+            expr,
+            Expr::Or(
+                Box::new(Expr::Var(1)),
+                Box::new(Expr::Or(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))
+                )
+            )
+        );
     }
 }

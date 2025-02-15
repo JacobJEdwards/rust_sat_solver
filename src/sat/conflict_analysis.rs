@@ -1,27 +1,38 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+
 use crate::sat::clause::Clause;
-use crate::sat::cnf::CNF;
-use crate::sat::literal::Literal;
+use crate::sat::cnf::Cnf;
 use crate::sat::trail::{Reason, Trail};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum Conflict {
+    #[default]
     Ground,
     Unit(Clause),
     Learned(usize, Clause),
     Restart(Clause),
 }
 
-fn idx_in(idx: usize, seen: &Vec<bool>) -> bool {
+const fn idx_in(idx: usize, seen: &[bool]) -> bool {
     seen[idx]
 }
 
-fn resolve(c: &mut Clause, o: &Clause, idx: usize, c_idx: usize, trail: &Trail, seen: &mut Vec<bool>, path_c: &mut usize, to_bump: &mut Vec<usize>) {
+fn resolve(
+    c: &mut Clause,
+    o: &Clause,
+    idx: usize,
+    c_idx: usize,
+    trail: &Trail,
+    seen: &mut [bool],
+    path_c: &mut usize,
+    to_bump: &mut Vec<usize>,
+) {
     c.remove_literal(c_idx);
     *path_c -= 1;
     seen[idx] = false;
 
     for &lit in o.iter() {
-        if !idx_in(lit.variable(), &seen) {
+        if !idx_in(lit.variable(), seen) {
             seen[lit.variable()] = true;
             to_bump.push(lit.variable());
             c.literals.push(lit);
@@ -32,7 +43,7 @@ fn resolve(c: &mut Clause, o: &Clause, idx: usize, c_idx: usize, trail: &Trail, 
     }
 }
 
-fn choose_literal(c: &Clause, trail: &Trail, i: &mut usize, seen: &Vec<bool>) -> Option<usize> {
+fn choose_literal(c: &Clause, trail: &Trail, i: &mut usize, seen: &[bool]) -> Option<usize> {
     while *i > 0 {
         *i -= 1;
         if seen[trail.trail[*i].lit.variable()] {
@@ -46,15 +57,15 @@ fn choose_literal(c: &Clause, trail: &Trail, i: &mut usize, seen: &Vec<bool>) ->
     None
 }
 
-pub fn analyse_conflict(cnf: &CNF, trail: &Trail, cref: usize) -> Conflict {
+#[must_use] pub fn analyse_conflict(cnf: &Cnf, trail: &Trail, cref: usize) -> Conflict {
     let dl = trail.decision_level();
     let mut to_bump = Vec::new();
-    let break_cond = if dl == 0 { 0} else {1};
+    let break_cond = usize::from(dl != 0);
     let mut path_c: usize = 0;
     let mut seen = vec![false; cnf.num_vars];
     let mut i = trail.len();
     let clause = &mut cnf[cref].clone();
-    
+
     for &lit in clause.iter() {
         seen[lit.variable()] = true;
         to_bump.push(lit.variable());
@@ -62,22 +73,30 @@ pub fn analyse_conflict(cnf: &CNF, trail: &Trail, cref: usize) -> Conflict {
             path_c += 1;
         }
     }
-    
+
     while path_c > break_cond {
-        let c_idx = match choose_literal(&clause, trail, &mut i, &seen) {
-            Some(c_idx) => c_idx,
-            None => break
+        let Some(c_idx) = choose_literal(clause, trail, &mut i, &seen) else {
+            break;
         };
+
         let ante = match trail.trail[i].reason {
-            Reason::Long(ante) => cnf[ante].clone(),
-            Reason::Unit(ante) => cnf[ante].clone(),
-            _ => break
+            Reason::Long(ante) | Reason::Unit(ante) => cnf[ante].clone(),
+            Reason::Decision => break,
         };
         let idx = trail.trail[i].lit.variable();
-        resolve(clause, &ante, idx, c_idx, trail, &mut seen, &mut path_c, &mut to_bump);
+        resolve(
+            clause,
+            &ante,
+            idx,
+            c_idx,
+            trail,
+            &mut seen,
+            &mut path_c,
+            &mut to_bump,
+        );
     }
-    
-    if clause.len() == 0 {
+
+    if clause.is_empty() {
         Conflict::Ground
     } else if clause.len() == 1 {
         Conflict::Unit(clause.clone())
@@ -94,5 +113,19 @@ pub fn analyse_conflict(cnf: &CNF, trail: &Trail, cref: usize) -> Conflict {
         }
         Conflict::Learned(s_idx, clause.clone())
     }
-    
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sat::literal::Literal;
+    use super::*;
+
+    #[test]
+    fn test_analyse_conflict() {
+        let cnf = Cnf::new(vec![vec![1, 2, 3], vec![4, 5, 6]]);
+        let trail = Trail::new(&cnf);
+        let cref = 0;
+        let conflict = analyse_conflict(&cnf, &trail, cref);
+        assert_eq!(conflict, Conflict::Restart(Clause::new(vec![Literal::from(1), Literal::from(2), Literal::from(3)])));
+    }
 }

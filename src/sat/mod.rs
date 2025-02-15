@@ -1,11 +1,12 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 pub mod assignment;
-mod clause;
+pub mod clause;
 pub mod cnf;
+pub mod conflict_analysis;
 pub mod expr;
-mod literal;
+pub mod literal;
+pub mod propagation;
 pub mod state;
+pub mod trail;
 pub mod vsids;
-mod watch;
-mod propagation;
-mod trail;
-mod conflict_analysis;
+pub mod watch;

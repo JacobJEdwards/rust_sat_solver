@@ -1,18 +1,19 @@
 use crate::sat;
 use crate::sat::assignment::Solutions;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board(Vec<Vec<usize>>);
 
 impl Board {
-    pub fn new(board: Vec<Vec<usize>>) -> Self {
-        Board(board)
+    #[must_use]
+    pub const fn new(board: Vec<Vec<usize>>) -> Self {
+        Self(board)
     }
 }
 
 impl From<Vec<Vec<usize>>> for Board {
     fn from(board: Vec<Vec<usize>>) -> Self {
-        Board::new(board)
+        Self::new(board)
     }
 }
 
@@ -30,49 +31,49 @@ impl From<&Board> for Vec<Vec<usize>> {
 
 impl From<[Vec<usize>; 4]> for Board {
     fn from(board: [Vec<usize>; 4]) -> Self {
-        Board::new(board.to_vec())
+        Self::new(board.to_vec())
     }
 }
 
 impl From<[Vec<usize>; 9]> for Board {
     fn from(board: [Vec<usize>; 9]) -> Self {
-        Board::new(board.to_vec())
+        Self::new(board.to_vec())
     }
 }
 
 impl From<[Vec<usize>; 16]> for Board {
     fn from(board: [Vec<usize>; 16]) -> Self {
-        Board::new(board.to_vec())
+        Self::new(board.to_vec())
     }
 }
 
 impl From<[Vec<usize>; 25]> for Board {
     fn from(board: [Vec<usize>; 25]) -> Self {
-        Board::new(board.to_vec())
+        Self::new(board.to_vec())
     }
 }
 
 impl From<&[&[usize; 4]; 4]> for Board {
     fn from(board: &[&[usize; 4]; 4]) -> Self {
-        Board::new(board.iter().map(|r| r.to_vec()).collect())
+        Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
 
 impl From<&[&[usize; 9]; 9]> for Board {
     fn from(board: &[&[usize; 9]; 9]) -> Self {
-        Board::new(board.iter().map(|r| r.to_vec()).collect())
+        Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
 
 impl From<&[&[usize; 16]; 16]> for Board {
     fn from(board: &[&[usize; 16]; 16]) -> Self {
-        Board::new(board.iter().map(|r| r.to_vec()).collect())
+        Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
 
 impl From<&[&[usize; 25]; 25]> for Board {
     fn from(board: &[&[usize; 25]; 25]) -> Self {
-        Board::new(board.iter().map(|r| r.to_vec()).collect())
+        Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
 
@@ -187,7 +188,7 @@ pub const EXAMPLE_TWENTY_FIVE: [[usize; 25]; 25] = [
     ],
 ];
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, PartialOrd, Ord, Hash)]
 pub enum Size {
     Four = 4,
     Nine = 9,
@@ -200,17 +201,17 @@ impl TryFrom<usize> for Size {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            4 => Ok(Size::Four),
-            9 => Ok(Size::Nine),
-            16 => Ok(Size::Sixteen),
-            25 => Ok(Size::TwentyFive),
+            4 => Ok(Self::Four),
+            9 => Ok(Self::Nine),
+            16 => Ok(Self::Sixteen),
+            25 => Ok(Self::TwentyFive),
             _ => Err(()),
         }
     }
 }
 
 impl From<Size> for usize {
-    fn from(size: Size) -> usize {
+    fn from(size: Size) -> Self {
         match size {
             Size::Four => 4,
             Size::Nine => 9,
@@ -220,13 +221,13 @@ impl From<Size> for usize {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sudoku {
     pub board: Board,
     pub size: Size,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Variable {
     pub row: usize,
     pub col: usize,
@@ -234,11 +235,13 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(row: usize, col: usize, num: usize) -> Self {
-        Variable { row, col, num }
+    #[must_use]
+    pub const fn new(row: usize, col: usize, num: usize) -> Self {
+        Self { row, col, num }
     }
 
-    pub fn encode(&self, size: Size) -> usize {
+    #[must_use]
+    pub const fn encode(&self, size: Size) -> usize {
         let board_size = size as usize;
         let row = self.row;
         let col = self.col;
@@ -249,12 +252,13 @@ impl Variable {
 }
 
 impl Size {
-    pub fn block_size(&self) -> usize {
+    #[must_use]
+    pub const fn block_size(self) -> usize {
         match self {
-            Size::Four => 2,
-            Size::Nine => 3,
-            Size::Sixteen => 4,
-            Size::TwentyFive => 5,
+            Self::Four => 2,
+            Self::Nine => 3,
+            Self::Sixteen => 4,
+            Self::TwentyFive => 5,
         }
     }
 }
@@ -265,8 +269,11 @@ fn generate_cell_clauses(size: usize) -> Vec<Vec<i32>> {
         for col in 1..=size {
             let clause = (1..=size)
                 .map(|num| {
-                    Variable::new(row, col, num).encode(Size::try_from(size).expect("Invalid size"))
-                        as i32
+                    i32::try_from(
+                        Variable::new(row, col, num)
+                            .encode(Size::try_from(size).expect("Invalid size")),
+                    )
+                    .expect("Invalid variable")
                 })
                 .collect();
 
@@ -290,8 +297,10 @@ fn generate_row_clauses(size: usize) -> Vec<Vec<i32>> {
                     let var2 = Variable::new(row, col2, num);
 
                     clauses.push(vec![
-                        -(var1.encode(Size::try_from(size).expect("Invalid size")) as i32),
-                        -(var2.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                        -i32::try_from(var1.encode(Size::try_from(size).expect("Invalid size")))
+                            .expect("Invalid variable"),
+                        -i32::try_from(var2.encode(Size::try_from(size).expect("Invalid size")))
+                            .expect("Invalid variable"),
                     ]);
                 }
             }
@@ -313,8 +322,10 @@ fn generate_col_clauses(size: usize) -> Vec<Vec<i32>> {
                     let var2 = Variable::new(row2, col, num);
 
                     clauses.push(vec![
-                        -(var1.encode(Size::try_from(size).expect("Invalid size")) as i32),
-                        -(var2.encode(Size::try_from(size).expect("Invalid size")) as i32),
+                        -i32::try_from(var1.encode(Size::try_from(size).expect("Invalid size")))
+                            .expect("Invalid variable"),
+                        -i32::try_from(var2.encode(Size::try_from(size).expect("Invalid size")))
+                            .expect("Invalid variable"),
                     ]);
                 }
             }
@@ -344,10 +355,10 @@ fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>>
                             continue;
                         }
                         clauses.push(vec![
-                            -(var1.encode(Size::try_from(board_size).expect("Invalid size"))
-                                as i32),
-                            -(var2.encode(Size::try_from(board_size).expect("Invalid size"))
-                                as i32),
+                            -i32::try_from(var1.encode(Size::try_from(board_size).expect("Invalid size")))
+                                .expect("Invalid variable"),
+                            -i32::try_from(var2.encode(Size::try_from(board_size).expect("Invalid size")))
+                                .expect("Invalid variable"),
                         ]);
                     }
                 }
@@ -364,7 +375,8 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
             if n != 0 {
                 let var = Variable::new(r + 1, c + 1, n);
                 clauses.push(vec![
-                    var.encode(Size::try_from(size).expect("Invalid size")) as i32,
+                    i32::try_from(var.encode(Size::try_from(size).expect("Invalid size")))
+                        .expect("Invalid variable"),
                 ]);
             }
         }
@@ -373,15 +385,17 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
 }
 
 impl Sudoku {
+    #[must_use]
     pub fn new(board: Board) -> Self {
         let size = board.0.len();
-        Sudoku {
+        Self {
             board,
             size: Size::try_from(size).expect("Invalid size"),
         }
     }
 
-    pub fn decode_solution(&self, solutions: Solutions) -> Sudoku {
+    #[must_use]
+    pub fn decode_solution(&self, solutions: &Solutions) -> Self {
         let size = self.size.into();
         let mut board = vec![vec![0; size]; size];
         for row in 1..=size {
@@ -389,19 +403,20 @@ impl Sudoku {
                 for num in 1..=size {
                     let var = Variable::new(row, col, num);
                     let encoded = var.encode(self.size);
-                    if solutions.contains(&encoded) {
+                    if solutions.check(encoded) {
                         board[row - 1][col - 1] = num;
                     }
                 }
             }
         }
-        Sudoku {
+        Self {
             board: Board::new(board),
             size: self.size,
         }
     }
 
-    pub fn to_cnf(&self) -> sat::cnf::CNF {
+    #[must_use]
+    pub fn to_cnf(&self) -> sat::cnf::Cnf {
         let size = self.size as usize;
         let block_size = self.size.block_size();
 
@@ -419,7 +434,7 @@ impl Sudoku {
             .chain(pre_filled_clauses)
             .collect();
 
-        sat::cnf::CNF::new(clauses)
+        sat::cnf::Cnf::new(clauses)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Vec<usize>> {
@@ -429,7 +444,7 @@ impl Sudoku {
 
 impl From<Board> for Sudoku {
     fn from(board: Board) -> Self {
-        Sudoku::new(board)
+        Self::new(board)
     }
 }
 

@@ -1,6 +1,6 @@
+use crate::sat::cnf::Cnf;
 use std::cmp::max;
 use std::fmt::Display;
-use crate::sat::cnf::CNF;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Cell {
@@ -35,16 +35,20 @@ impl Nonogram {
         let row_size = rows.len();
         let col_size = cols.len();
         let solution = vec![vec![Cell::Unknown; col_size]; row_size];
-        Nonogram { rows, cols, solution }
+        Nonogram {
+            rows,
+            cols,
+            solution,
+        }
     }
-    
+
     pub fn decode(&self, assignment: Vec<i32>) -> Vec<Vec<Cell>> {
         let mut solution = self.solution.clone();
         for (i, _) in self.rows.iter().enumerate() {
             for (j, _) in self.cols.iter().enumerate() {
                 let fill = Variable::new(i + 1, j + 1, Cell::Filled).encode(self.clone());
                 let empty = Variable::new(i + 1, j + 1, Cell::Empty).encode(self.clone());
-                
+
                 if assignment.contains(&(fill as i32)) {
                     solution[i][j] = Cell::Filled;
                 } else if assignment.contains(&(empty as i32)) {
@@ -54,17 +58,17 @@ impl Nonogram {
         }
         solution
     }
-    
-    pub fn to_cnf(&self) -> CNF {
+
+    pub fn to_cnf(&self) -> Cnf {
         let row_size = self.rows.len();
         let col_size = self.cols.len();
-        
+
         let cell_clauses = generate_cell_clauses(self.clone());
         let cell_unique_clauses = generate_cell_unique_clauses(self.clone());
-        
+
         let row_clauses = generate_row_clauses(self.clone());
         let col_clauses = generate_col_clauses(self.clone());
-        
+
         let clauses = cell_clauses
             .iter()
             .chain(cell_unique_clauses.iter())
@@ -72,8 +76,8 @@ impl Nonogram {
             .chain(col_clauses.iter())
             .cloned()
             .collect();
-        
-        CNF::new(clauses)
+
+        Cnf::new(clauses)
     }
 }
 
@@ -83,7 +87,7 @@ fn generate_cell_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
         for (j, _) in nonogram.cols.iter().enumerate() {
             let fill = Variable::new(i + 1, j + 1, Cell::Filled).encode(nonogram.clone());
             let empty = Variable::new(i + 1, j + 1, Cell::Empty).encode(nonogram.clone());
-            
+
             let clause = vec![-(fill as i32), -(empty as i32)];
             clauses.push(clause);
         }
@@ -97,17 +101,16 @@ fn generate_cell_unique_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
         for (j, _) in nonogram.cols.iter().enumerate() {
             let fill = Variable::new(i + 1, j + 1, Cell::Filled).encode(nonogram.clone());
             let empty = Variable::new(i + 1, j + 1, Cell::Empty).encode(nonogram.clone());
-            
+
             let clause = vec![-(fill as i32), -(empty as i32)];
             clauses.push(clause);
-            }
         }
+    }
     clauses
 }
 
 fn generate_row_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
     todo!()
-    
 }
 
 fn generate_col_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
@@ -116,12 +119,19 @@ fn generate_col_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
 
 fn encode_cell(nonogram: Nonogram, col_index: usize, row_index: usize, mask: Mask) -> usize {
     let cell = mask[row_index];
-    let var = Variable::new(row_index + 1, col_index + 1, if cell >= 1 { Cell::Filled } else { Cell::Empty });
+    let var = Variable::new(
+        row_index + 1,
+        col_index + 1,
+        if cell >= 1 { Cell::Filled } else { Cell::Empty },
+    );
     var.encode(nonogram)
 }
 
-fn generate_possible_solutions(nonogram: Nonogram, size: Size, combinations: Constraint) -> 
-                                                                                         Vec<Vec<i32>> {
+fn generate_possible_solutions(
+    nonogram: Nonogram,
+    size: Size,
+    combinations: Constraint,
+) -> Vec<Vec<i32>> {
     todo!("Generate all possible solutions for a given row or column")
 }
 
@@ -129,14 +139,14 @@ fn generate_possible_solutions(nonogram: Nonogram, size: Size, combinations: Con
 struct Variable {
     row: usize,
     col: usize,
-    fill: Cell
+    fill: Cell,
 }
 
 impl Variable {
     fn new(row: usize, col: usize, fill: Cell) -> Self {
         Variable { row, col, fill }
     }
-    
+
     fn encode(&self, nonogram: Nonogram) -> usize {
         let board_max = max(nonogram.rows.len(), nonogram.cols.len());
         (self.row - 1) * board_max * 2 + (self.col - 1) * 2 + self.fill as usize

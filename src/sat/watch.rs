@@ -1,32 +1,19 @@
-use std::ops::{Index, IndexMut};
-use crate::sat::cnf::CNF;
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
+use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WatchedLiterals(Vec<Vec<usize>>);
 
 impl WatchedLiterals {
-    pub fn new(cnf: &CNF) -> Self {
-        // let watched_literals = 
-        //     cnf.iter()
-        //         .enumerate()
-        //         .filter(|(_, c)| !c.is_unit())
-        //         .fold(vec![Vec::default(); cnf.num_vars + 1], |mut acc, (i, clause)| {
-        //             let a = clause[0];
-        //             let b = clause[1];
-        // 
-        //             acc[a.var].push(i);
-        //             acc[b.var].push(i);
-        // 
-        //             acc
-        //         });
-        
+    #[must_use] pub fn new(cnf: &Cnf) -> Self {
         let mut watched_literals = vec![Vec::default(); cnf.num_vars + 1];
-        
+
         for (i, clause) in cnf.iter().enumerate().filter(|(_, c)| !c.is_unit()) {
             let a = clause[0];
             let b = clause[1];
-        
+
             watched_literals[a.variable()].push(i);
             watched_literals[b.variable()].push(i);
         }

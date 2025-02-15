@@ -1,3 +1,4 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use core::ops::{Neg, Not};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
@@ -7,30 +8,30 @@ pub struct Literal {
 }
 
 impl Literal {
-    pub const fn new(var: usize, polarity: bool) -> Self {
+    #[must_use] pub const fn new(var: usize, polarity: bool) -> Self {
         Self { var, polarity }
     }
 
-    pub const fn negated(&self) -> Self {
+    #[must_use] pub const fn negated(&self) -> Self {
         Self {
             var: self.var,
             polarity: !self.polarity,
         }
     }
-    
-    pub fn is_negated(&self) -> bool {
+
+    #[must_use] pub const fn is_negated(&self) -> bool {
         !self.polarity
     }
-    
-    pub fn is_positive(&self) -> bool {
+
+    #[must_use] pub const fn is_positive(&self) -> bool {
         self.polarity
     }
-    
-    pub fn polarity(&self) -> bool {
+
+    #[must_use] pub const fn polarity(&self) -> bool {
         self.polarity
     }
-    
-    pub fn variable(&self) -> usize {
+
+    #[must_use] pub const fn variable(&self) -> usize {
         self.var
     }
 }
@@ -47,9 +48,9 @@ impl From<i32> for Literal {
 impl From<&Literal> for i32 {
     fn from(l: &Literal) -> Self {
         if l.polarity {
-            l.var as i32
+            Self::try_from(l.var).expect("Literal variable is too large")
         } else {
-            -(l.var as i32)
+            -Self::try_from(l.var).expect("Literal variable is too large")
         }
     }
 }

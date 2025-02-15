@@ -1,3 +1,4 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Expr {
     Var(usize),
@@ -8,90 +9,90 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn is_val(&self) -> bool {
-        matches!(self, Expr::Val(_))
+    #[must_use] pub const fn is_val(&self) -> bool {
+        matches!(self, Self::Val(_))
     }
 
-    pub fn is_var(&self) -> bool {
-        matches!(self, Expr::Var(_))
+    #[must_use] pub const fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
     }
 
-    pub fn is_not(&self) -> bool {
-        matches!(self, Expr::Not(_))
+    #[must_use] pub const fn is_not(&self) -> bool {
+        matches!(self, Self::Not(_))
     }
 
-    pub fn is_and(&self) -> bool {
-        matches!(self, Expr::And(_, _))
+    #[must_use] pub const fn is_and(&self) -> bool {
+        matches!(self, Self::And(_, _))
     }
 
-    pub fn is_or(&self) -> bool {
-        matches!(self, Expr::Or(_, _))
+    #[must_use] pub const fn is_or(&self) -> bool {
+        matches!(self, Self::Or(_, _))
     }
 
-    pub fn is_true(&self) -> bool {
+    #[must_use] pub const fn is_true(&self) -> bool {
         match self {
-            Expr::Val(b) => *b,
+            Self::Val(b) => *b,
             _ => false,
         }
     }
 
-    pub fn is_false(&self) -> bool {
+    #[must_use] pub const fn is_false(&self) -> bool {
         match self {
-            Expr::Val(b) => !*b,
+            Self::Val(b) => !*b,
             _ => false,
         }
     }
 
-    pub fn unwrap_val(&self) -> bool {
+    #[must_use] pub fn unwrap_val(&self) -> bool {
         match self {
-            Expr::Val(b) => *b,
+            Self::Val(b) => *b,
             _ => panic!("Not a value"),
         }
     }
 
-    pub fn unwrap_var(&self) -> usize {
+    #[must_use] pub fn unwrap_var(&self) -> usize {
         match self {
-            Expr::Var(i) => *i,
+            Self::Var(i) => *i,
             _ => panic!("Not a variable"),
         }
     }
 
-    pub fn ors(e: &[Expr]) -> Expr {
-        e.iter().fold(Expr::Val(false), |acc, x| {
-            Expr::Or(Box::new(acc), Box::new(x.clone()))
+    #[must_use] pub fn ors(e: &[Self]) -> Self {
+        e.iter().fold(Self::Val(false), |acc, x| {
+            Self::Or(Box::new(acc), Box::new(x.clone()))
         })
     }
 
-    pub fn ands(e: &[Expr]) -> Expr {
-        e.iter().fold(Expr::Val(true), |acc, x| {
-            Expr::And(Box::new(acc), Box::new(x.clone()))
+    #[must_use] pub fn ands(e: &[Self]) -> Self {
+        e.iter().fold(Self::Val(true), |acc, x| {
+            Self::And(Box::new(acc), Box::new(x.clone()))
         })
     }
 }
 
 impl From<bool> for Expr {
     fn from(b: bool) -> Self {
-        Expr::Val(b)
+        Self::Val(b)
     }
 }
 
 impl From<usize> for Expr {
     fn from(i: usize) -> Self {
-        Expr::Var(i)
+        Self::Var(i)
     }
 }
 
 impl From<i32> for Expr {
     fn from(i: i32) -> Self {
         if i < 0 {
-            Expr::Not(Box::new(Expr::Var((-i) as usize)))
+            Self::Not(Box::new(Self::Var(i.unsigned_abs() as usize)))
         } else {
-            Expr::Var(i as usize)
+            Self::Var(i.unsigned_abs() as usize)
         }
     }
 }
 
-pub fn demorgans_laws(expr: &Expr) -> Expr {
+#[must_use] pub fn demorgans_laws(expr: &Expr) -> Expr {
     match expr {
         Expr::Not(e) => match *e.clone() {
             Expr::Var(i) => Expr::Not(Box::new(Expr::Var(i))),
@@ -113,7 +114,7 @@ pub fn demorgans_laws(expr: &Expr) -> Expr {
     }
 }
 
-pub fn distributive_laws(expr: &Expr) -> Expr {
+#[must_use] pub fn distributive_laws(expr: &Expr) -> Expr {
     let expr = expr.clone();
     match expr {
         Expr::And(e1, e2) => {
@@ -139,11 +140,11 @@ pub fn distributive_laws(expr: &Expr) -> Expr {
         ),
         Expr::Val(b) => Expr::Val(b),
         Expr::Var(i) => Expr::Var(i),
-        _ => panic!("Not implemented"),
+        Expr::Not(_) => panic!("Not implemented"),
     }
 }
 
-pub fn apply_laws(expr: &Expr) -> Expr {
+#[must_use] pub fn apply_laws(expr: &Expr) -> Expr {
     let mut expr = expr.clone();
     loop {
         let new_expr = distributive_laws(&demorgans_laws(&expr));
@@ -153,4 +154,66 @@ pub fn apply_laws(expr: &Expr) -> Expr {
         expr = new_expr;
     }
     expr
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_demorgans_laws() {
+        let expr = Expr::Not(Box::new(Expr::And(
+            Box::new(Expr::Var(1)),
+            Box::new(Expr::Var(2)),
+        )));
+        let expected = Expr::Or(
+            Box::new(Expr::Not(Box::new(Expr::Var(1)))),
+            Box::new(Expr::Not(Box::new(Expr::Var(2)))),
+        );
+        assert_eq!(demorgans_laws(&expr), expected);
+    }
+
+    #[test]
+    fn test_distributive_laws() {
+        let expr = Expr::And(
+            Box::new(Expr::Or(
+                Box::new(Expr::Var(1)),
+                Box::new(Expr::Var(2)),
+            )),
+            Box::new(Expr::Var(3)),
+        );
+        let expected = Expr::Or(
+            Box::new(Expr::And(
+                Box::new(Expr::Var(1)),
+                Box::new(Expr::Var(3)),
+            )),
+            Box::new(Expr::And(
+                Box::new(Expr::Var(2)),
+                Box::new(Expr::Var(3)),
+            )),
+        );
+        assert_eq!(distributive_laws(&expr), expected);
+    }
+
+    #[test]
+    fn test_apply_laws() {
+        let expr = Expr::And(
+            Box::new(Expr::Or(
+                Box::new(Expr::Var(1)),
+                Box::new(Expr::Var(2)),
+            )),
+            Box::new(Expr::Var(3)),
+        );
+        let expected = Expr::Or(
+            Box::new(Expr::And(
+                Box::new(Expr::Var(1)),
+                Box::new(Expr::Var(3)),
+            )),
+            Box::new(Expr::And(
+                Box::new(Expr::Var(2)),
+                Box::new(Expr::Var(3)),
+            )),
+        );
+        assert_eq!(apply_laws(&expr), expected);
+    }
 }

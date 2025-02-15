@@ -1,8 +1,11 @@
+use crate::sat::assignment::VecAssignment;
+use crate::sat::propagation::{PropagationQueue, PropagationStack};
+use crate::sat::state::{Solver, State};
 use crate::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN, EXAMPLE_TWENTY_FIVE};
 
+mod nonogram;
 mod sat;
 mod sudoku;
-mod nonogram;
 
 fn main() {
     // time
@@ -15,7 +18,7 @@ fn main() {
     let sudoku = Sudoku::new(Board::from(board));
 
     let cnf = sudoku.to_cnf();
-    let mut state = sat::state::State::new(cnf);
+    let mut state: State<VecAssignment, PropagationQueue> = State::new(cnf);
 
     let time = std::time::Instant::now();
     let sol = state.solve();
@@ -24,7 +27,7 @@ fn main() {
     println!("Time: {:?}", elapsed);
     match sol {
         Some(sol) => {
-            let solution = sudoku.decode_solution(sol);
+            let solution = sudoku.decode_solution(&sol);
 
             for row in solution.iter() {
                 println!("{:?}", row);
