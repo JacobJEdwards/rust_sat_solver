@@ -3,6 +3,7 @@ use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
 use crate::sat::literal::Literal;
 use std::ops::{Index, IndexMut};
+use crate::sat::assignment::Solutions;
 
 pub type DecisionLevel = usize;
 
@@ -28,7 +29,7 @@ impl IndexMut<usize> for Cnf {
 
 impl Cnf {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
-        let clauses: Vec<_> = clauses.into_iter().map(Clause::from).collect();
+        let clauses: Vec<_> = clauses.into_iter().filter(|clause| !clause.is_empty()).map(Clause::from).collect();
 
         let num_vars = clauses
             .iter()
@@ -47,6 +48,20 @@ impl Cnf {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Clause> {
         self.clauses.iter_mut()
     }
+    
+    pub fn add_clause(&mut self, clause: Clause) {
+        let max_var = clause.iter().map(Literal::variable).max().unwrap_or(0);
+        
+        self.clauses.push(clause);
+        
+        if max_var > self.num_vars {
+            self.num_vars = max_var;
+        }
+    }
+    
+    pub fn add_clause_vec(&mut self, clause: Vec<i32>) {
+        self.add_clause(Clause::from(clause));
+    }
 
     #[must_use] pub fn len(&self) -> usize {
         self.clauses.len()
@@ -54,6 +69,14 @@ impl Cnf {
 
     #[must_use] pub fn is_empty(&self) -> bool {
         self.clauses.is_empty()
+    }
+    
+    #[must_use] pub fn verify(&self, solutions: &Solutions) -> bool {
+        self.iter().all(|clause| clause.iter().any(|&lit| if lit.is_negated() {
+            !solutions.contains(lit.variable())
+        } else {
+            solutions.contains(lit.variable())
+        }))
     }
 }
 

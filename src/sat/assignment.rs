@@ -136,6 +136,10 @@ impl Solutions {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+    
+    pub fn contains(&self, i: usize) -> bool {
+        self.0.contains(&i)
+    }
 }
 
 impl Assignment for VecAssignment {

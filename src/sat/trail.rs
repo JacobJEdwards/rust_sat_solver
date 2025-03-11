@@ -1,5 +1,8 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use crate::sat::assignment::{Assignment, VecAssignment};
+
+use std::cmp::min;
+use std::ops::{Index, IndexMut};
+use crate::sat::assignment::{Assignment};
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 
@@ -20,42 +23,65 @@ pub struct Step {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Trail {
-    pub trail: Vec<Step>,
+    t: Vec<Step>,
     pub curr_idx: usize,
     pub lit_to_level: Vec<usize>,
 }
 
+impl Index<usize> for Trail {
+    type Output = Step;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.t[index]
+    }
+}
+
+impl IndexMut<usize> for Trail {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.t[index]
+    }
+}
+
 impl Trail {
     #[must_use] pub fn decision_level(&self) -> usize {
-        self.trail[self.curr_idx].decision_level
+        let index = min(self.curr_idx, self.t.len() - 1);
+        self.t[index].decision_level
     }
 
     #[must_use] pub fn last(&self) -> Literal {
-        self.trail[self.curr_idx].lit
+        self.t[self.curr_idx].lit
     }
 
     #[must_use] pub fn len(&self) -> usize {
-        self.trail.len()
+        self.t.len()
     }
     
     #[must_use] pub fn is_empty(&self) -> bool {
-        self.trail.is_empty()
+        self.t.is_empty()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Step> {
-        self.trail.iter()
+        self.t.iter()
     }
 
     #[must_use] pub fn new(cnf: &Cnf) -> Self {
+        let initial = cnf.iter()
+            .filter(|c| c.is_unit())
+            .map(|c| Step {
+                lit: c[0],
+                decision_level: 0,
+                reason: Reason::Unit(c[0].variable()),
+            }).collect();
+        
         Self {
-            trail: Vec::with_capacity(cnf.num_vars + 1),
+            t: initial,
             curr_idx: 0,
             lit_to_level: vec![0; cnf.num_vars + 1],
         }
     }
 
     pub fn push(&mut self, lit: Literal, decision_level: usize, reason: Reason) {
-        self.trail.push(Step {
+        self.t.push(Step {
             lit,
             decision_level,
             reason,
@@ -63,25 +89,27 @@ impl Trail {
         self.lit_to_level[lit.variable()] = decision_level;
     }
 
-    pub fn backstep(&mut self, a: &mut VecAssignment) {
-        let mut i = self.trail.len() - 1;
-        while self.trail[i].reason != Reason::Decision {
-            let lit = self.trail[i].lit;
+    pub fn backstep<A: Assignment>(&mut self, a: &mut A) {
+        let mut i = self.t.len() - 1;
+        while self.t[i].reason != Reason::Decision {
+            let lit = self.t[i].lit;
             a.unassign(lit.variable());
             i -= 1;
         }
         self.curr_idx = i;
-        self.trail.truncate(i);
+        self.t.truncate(i);
     }
 
     pub fn backstep_to<A: Assignment>(&mut self, a: &mut A, level: usize) {
-        let mut i = self.trail.len() - 1;
-        while self.trail[i].decision_level > level {
-            let lit = self.trail[i].lit;
-            a.unassign(lit.variable());
-            i -= 1;
+        let mut truncate_at = 0;
+        for i in (0..self.t.len()).rev() {
+            if self.t[i].decision_level >= level {
+                a.unassign(self.t[i].lit.variable());
+            } else {
+                truncate_at = i + 1;
+                break;
+            }
         }
-        self.curr_idx = i;
-        self.trail.truncate(i);
-    }
-}
+        self.curr_idx = truncate_at;
+        self.t.truncate(truncate_at);
+    }}

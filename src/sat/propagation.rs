@@ -10,28 +10,20 @@ pub trait PropagationStructure {
     fn pop(&mut self) -> Option<(Literal, Option<Reason>)>;
 }
 
+fn initial_propagation<T: FromIterator<(Literal, Option<Reason>)>>(cnf: &Cnf) -> T {
+    cnf.iter()
+        .filter(|c| c.is_unit())
+        .map(|c| (c[0], Some(Reason::Unit(c[0].variable()))))
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash, PartialOrd, Ord)]
 pub struct PropagationQueue(VecDeque<(Literal, Option<Reason>)>);
 
-impl PropagationQueue {
-    pub fn iter(&self) -> impl Iterator<Item = &(Literal, Option<Reason>)> {
-        self.0.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (Literal, Option<Reason>)> {
-        self.0.iter_mut()
-    }
-}
 
 impl PropagationStructure for PropagationQueue {
     fn new(cnf: &Cnf) -> Self {
-        let q = cnf
-            .iter()
-            .filter(|c| c.is_unit())
-            .map(|c| (c[0], Some(Reason::Unit(c[0].variable()))))
-            .collect();
-
-        Self(q)
+        Self(initial_propagation(cnf))
     }
 
     fn push(&mut self, p: (Literal, Option<Reason>)) {
@@ -58,13 +50,7 @@ impl PropagationStack {
 
 impl PropagationStructure for PropagationStack {
     fn new(cnf: &Cnf) -> Self {
-        let q = cnf
-            .iter()
-            .filter(|c| c.is_unit())
-            .map(|c| (c[0], Some(Reason::Unit(c[0].variable()))))
-            .collect();
-
-        Self(q)
+        Self(initial_propagation(cnf))
     }
 
     fn push(&mut self, p: (Literal, Option<Reason>)) {

@@ -1,58 +1,22 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
+use crate::sat::solver::Solver;
 use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
 use crate::sat::clause::Clause;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{analyse_conflict, Conflict};
 use crate::sat::literal::Literal;
-use crate::sat::propagation::{PropagationQueue, PropagationStructure};
+use crate::sat::phase_saving::SavedPhases;
+use crate::sat::restarter::{Luby, Restarter};
 use crate::sat::trail::Reason;
-use crate::sat::trail::Reason::Long;
 use crate::sat::trail::Trail;
-use crate::sat::vsids::Vsids;
+use crate::sat::variable_selection::{VariableSelection, Vsids};
 use crate::sat::watch::WatchedLiterals;
-use std::ops::{Index, IndexMut};
 
-pub trait Solver {
-    fn new(cnf: Cnf) -> Self;
-    fn solve(&mut self) -> Option<Solutions>;
-    fn solutions(&self) -> Solutions;
-}
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct SavedPhases(Vec<Option<bool>>);
-
-impl SavedPhases {
-    fn new(n: usize) -> Self {
-        Self(vec![None; n + 1])
-    }
-
-    fn save(&mut self, i: usize, b: bool) {
-        self[i] = Some(b);
-    }
-
-    fn get_next(&self, i: usize) -> bool {
-        !self[i].unwrap_or(false)
-    }
-}
-
-impl Index<usize> for SavedPhases {
-    type Output = Option<bool>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl IndexMut<usize> for SavedPhases {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct State<A: Assignment = VecAssignment, P: PropagationStructure = PropagationQueue> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct State<A: Assignment = VecAssignment, V: VariableSelection = Vsids, R: Restarter = Luby> {
     pub assignment: A,
 
     pub watched_literals: WatchedLiterals,
@@ -61,7 +25,7 @@ pub struct State<A: Assignment = VecAssignment, P: PropagationStructure = Propag
 
     pub learned_clauses: Vec<Clause>,
 
-    pub vsids: Vsids,
+    pub selector: V,
 
     pub saved_phases: SavedPhases,
 
@@ -69,10 +33,11 @@ pub struct State<A: Assignment = VecAssignment, P: PropagationStructure = Propag
 
     pub trail: Trail,
 
-    pub propagation_queue: P,
+    pub restarter: R,
+
 }
 
-impl<A: Assignment, P: PropagationStructure> State<A, P> {
+impl<A: Assignment, V: VariableSelection, R: Restarter> State<A, V, R> {
     fn find_new_watch(&self, clause_idx: usize) -> Option<usize> {
         let clause = &self.cnf[clause_idx];
 
@@ -94,8 +59,7 @@ impl<A: Assignment, P: PropagationStructure> State<A, P> {
     }
 
     fn add_propagation(&mut self, lit: Literal, clause_idx: usize) {
-        self.propagation_queue
-            .push((lit, Option::from(Long(clause_idx))));
+        self.trail.push(lit, self.decision_level, Reason::Long(clause_idx));
     }
 
     fn process_clause(&mut self, clause_idx: usize) -> Option<usize> {
@@ -145,20 +109,23 @@ impl<A: Assignment, P: PropagationStructure> State<A, P> {
     }
 
     fn propagate(&mut self) -> Option<usize> {
-        while let Some((lit, _reason)) = self.propagation_queue.pop() {
+        while self.trail.curr_idx < self.trail.len() {
+            let lit = self.trail[self.trail.curr_idx].lit;
+            
             if self.assignment.is_assigned(lit.variable()) {
+                self.trail.curr_idx += 1;
                 continue;
             }
-
+            
             self.assignment.assign(lit);
-            self.trail.push(lit, self.decision_level, Reason::Unit(0));
-            let indices = &self.watched_literals[lit];
-
+            self.trail.curr_idx += 1;
+            let indices = &self.watched_literals[!lit];
+            
             if let Some(c_ref) = self.propagate_watch(&indices.clone()) {
                 return Some(c_ref);
             }
         }
-
+        
         None
     }
 
@@ -167,7 +134,7 @@ impl<A: Assignment, P: PropagationStructure> State<A, P> {
     }
 }
 
-impl<A: Assignment, P: PropagationStructure> Solver for State<A, P> {
+impl<A: Assignment + std::fmt::Debug, V: VariableSelection, R: Restarter> Solver for State<A, V, R> {
     fn new(cnf: Cnf) -> Self {
         let wl = WatchedLiterals::new(&cnf);
         let vars = cnf
@@ -175,17 +142,18 @@ impl<A: Assignment, P: PropagationStructure> Solver for State<A, P> {
             .iter()
             .flat_map(|c| c.iter().map(Literal::variable))
             .collect::<Vec<_>>();
-        let vsids = Vsids::new(cnf.num_vars, &vars);
+        
+        let selector = V::new(cnf.num_vars, &vars);
 
         Self {
             assignment: A::new(cnf.num_vars),
             trail: Trail::new(&cnf),
             watched_literals: wl,
-            propagation_queue: P::new(&cnf),
             saved_phases: SavedPhases::new(cnf.num_vars),
             cnf,
             learned_clauses: Vec::default(),
-            vsids,
+            selector,
+            restarter: R::new(),
             decision_level: 0,
         }
     }
@@ -201,37 +169,54 @@ impl<A: Assignment, P: PropagationStructure> Solver for State<A, P> {
 
         loop {
             if let Some(c_ref) = self.propagate() {
-                match analyse_conflict(&self.cnf, &self.trail, c_ref) {
-                    Conflict::Ground => return None,
+                let (conflict, to_bump) = analyse_conflict(&self.cnf, &self.trail, c_ref);
+
+                match conflict {
+                    Conflict::Ground => {
+                        return None
+                    }
                     Conflict::Unit(clause) => {
                         let lit = clause[0];
-                        self.decision_level += 1;
-                        self.propagation_queue.push((lit, None));
+                        self.trail.push(lit, self.decision_level, Reason::Unit(lit.variable()));
                     }
                     Conflict::Learned(dl, clause) => {
-                        self.vsids
-                            .bumps(clause.literals.iter().map(Literal::variable));
+                        self.selector.bumps(clause.iter().map(Literal::variable));
                         self.learned_clauses.push(clause);
                         self.trail.backstep_to(&mut self.assignment, dl);
+                        self.decision_level = dl;
                     }
-                    Conflict::Restart(_) => {
-                        return None;
+                    Conflict::Restart(clause) => {
+                        self.learned_clauses.push(clause);
+                        self.trail.backstep_to( &mut self.assignment, 0);
+                        self.decision_level = 0;
                     }
                 }
+
+                self.selector.bumps(to_bump);
+                self.selector.decay(0.95);
+                if self.restarter.should_restart() {
+                    self.trail.backstep_to(&mut self.assignment, 0);
+                }
             }
+
+            self.decision_level += 1;
 
             if self.all_assigned() {
                 return Some(self.solutions());
             }
 
-            let lit = self.vsids.pick(&self.assignment)?;
+            let lit = self.selector.pick(&self.assignment);
+            if lit.is_none() {
+                return Some(self.solutions());
+            }
+            
+            let lit = lit.unwrap();
+
             let next = self.saved_phases.get_next(lit);
 
             self.saved_phases.save(lit, next);
 
-            self.decision_level += 1;
-            self.propagation_queue
-                .push((Literal::new(lit, !next), None));
+            self.trail.push(Literal::new(lit, !next), self.decision_level, Reason::Unit(lit));
         }
     }
 
