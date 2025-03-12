@@ -60,9 +60,6 @@ impl Nonogram {
     }
 
     pub fn to_cnf(&self) -> Cnf {
-        let row_size = self.rows.len();
-        let col_size = self.cols.len();
-
         let cell_clauses = generate_cell_clauses(self.clone());
         let cell_unique_clauses = generate_cell_unique_clauses(self.clone());
 
@@ -109,11 +106,11 @@ fn generate_cell_unique_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
     clauses
 }
 
-fn generate_row_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
+fn generate_row_clauses(_: Nonogram) -> Vec<Vec<i32>> {
     todo!()
 }
 
-fn generate_col_clauses(nonogram: Nonogram) -> Vec<Vec<i32>> {
+fn generate_col_clauses(_: Nonogram) -> Vec<Vec<i32>> {
     todo!()
 }
 

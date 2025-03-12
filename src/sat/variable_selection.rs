@@ -4,15 +4,13 @@ use crate::sat::assignment::Assignment;
 use std::ops::{Index, IndexMut};
 // use std::collections::BinaryHeap;
 
-
 pub trait VariableSelection {
     fn new(num_vars: usize, vars: &[usize]) -> Self;
     fn pick<A: Assignment>(&self, assignment: &A) -> Option<usize>;
-    
+
     fn bumps<T: IntoIterator<Item = usize>>(&mut self, vars: T);
     fn decay(&mut self, decay: f64);
 }
-
 
 #[derive(Debug, Clone, PartialEq, Default, PartialOrd)]
 pub struct Vsids(Vec<f64>);
@@ -37,7 +35,8 @@ impl Vsids {
     pub fn bump(&mut self, i: usize) {
         self.0[i] += 1.0;
     }
-    #[must_use] pub fn get(&self, i: usize) -> f64 {
+    #[must_use]
+    pub fn get(&self, i: usize) -> f64 {
         self[i]
     }
     pub fn set(&mut self, i: usize, v: f64) {
@@ -58,12 +57,13 @@ impl Vsids {
 }
 
 impl VariableSelection for Vsids {
-    #[must_use] fn new(num_vars: usize, vars: &[usize]) -> Self {
-        let mut vsids = Self(vec![0.0; num_vars + 1]);
+    #[must_use]
+    fn new(num_vars: usize, vars: &[usize]) -> Self {
+        let mut vsids = Self(vec![0.0; num_vars]);
         vsids.bumps(vars.iter().copied());
         vsids
     }
-    
+
     fn pick<A: Assignment>(&self, assignment: &A) -> Option<usize> {
         let mut max = f64::MIN;
         let mut max_i = None;
@@ -94,11 +94,11 @@ pub struct RandomOrder(usize);
 
 impl VariableSelection for RandomOrder {
     fn new(num_vars: usize, vars: &[usize]) -> Self {
-        Self(num_vars + 1)
+        Self(num_vars)
     }
 
     fn pick<A: Assignment>(&self, assignment: &A) -> Option<usize> {
-        (1..=self.0 - 1).find(|&i| assignment[i].is_unassigned())
+        (1..self.0).find(|&i| assignment[i].is_unassigned())
     }
 
     fn bumps<T: IntoIterator<Item = usize>>(&mut self, _: T) {}

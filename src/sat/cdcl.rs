@@ -1,19 +1,19 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
-use crate::sat::solver::Solver;
 use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
 use crate::sat::clause::Clause;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
-use crate::sat::conflict_analysis::{analyse_conflict, Conflict};
+use crate::sat::conflict_analysis::{analyse_conflict, Analyser, Conflict};
 use crate::sat::literal::Literal;
 use crate::sat::phase_saving::SavedPhases;
+use crate::sat::preprocessing::{Preprocessor, PreprocessorChain};
 use crate::sat::restarter::{Luby, Restarter};
+use crate::sat::solver::Solver;
 use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::{VariableSelection, Vsids};
 use crate::sat::watch::WatchedLiterals;
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct State<A: Assignment = VecAssignment, V: VariableSelection = Vsids, R: Restarter = Luby> {
@@ -33,8 +33,13 @@ pub struct State<A: Assignment = VecAssignment, V: VariableSelection = Vsids, R:
 
     pub trail: Trail,
 
+    pub preprocessors: PreprocessorChain,
+
     pub restarter: R,
 
+    pub non_learnt_clauses_idx: usize,
+
+    pub restart_count: usize,
 }
 
 impl<A: Assignment, V: VariableSelection, R: Restarter> State<A, V, R> {
@@ -59,7 +64,8 @@ impl<A: Assignment, V: VariableSelection, R: Restarter> State<A, V, R> {
     }
 
     fn add_propagation(&mut self, lit: Literal, clause_idx: usize) {
-        self.trail.push(lit, self.decision_level, Reason::Long(clause_idx));
+        self.trail
+            .push(lit, self.decision_level, Reason::Long(clause_idx));
     }
 
     fn process_clause(&mut self, clause_idx: usize) -> Option<usize> {
@@ -111,38 +117,54 @@ impl<A: Assignment, V: VariableSelection, R: Restarter> State<A, V, R> {
     fn propagate(&mut self) -> Option<usize> {
         while self.trail.curr_idx < self.trail.len() {
             let lit = self.trail[self.trail.curr_idx].lit;
-            
+
             if self.assignment.is_assigned(lit.variable()) {
                 self.trail.curr_idx += 1;
                 continue;
             }
-            
+
             self.assignment.assign(lit);
             self.trail.curr_idx += 1;
             let indices = &self.watched_literals[!lit];
-            
+
             if let Some(c_ref) = self.propagate_watch(&indices.clone()) {
                 return Some(c_ref);
             }
         }
-        
+
         None
     }
 
+    pub fn add_preprocessor<T: Preprocessor>(&self, preprocessor: T) -> &Self {
+        self.preprocessors.add(preprocessor);
+        self
+    }
+
     pub fn all_assigned(&self) -> bool {
-        self.trail.len() == self.cnf.num_vars
+        self.assignment.all_assigned()
+    }
+
+    pub fn add_clause(&mut self, clause: Clause) {
+        if clause.is_empty() || clause.is_tautology() {
+            return;
+        }
+
+        let c_ref = self.cnf.len();
+        self.cnf.add_clause(clause);
+        self.watched_literals.add_clause(&self.cnf[c_ref], c_ref);
     }
 }
 
-impl<A: Assignment + std::fmt::Debug, V: VariableSelection, R: Restarter> Solver for State<A, V, R> {
+impl<A: Assignment, V: VariableSelection, R: Restarter> Solver for State<A, V, R> {
     fn new(cnf: Cnf) -> Self {
+        let non_learnt_clauses_idx = cnf.len();
         let wl = WatchedLiterals::new(&cnf);
         let vars = cnf
             .clauses
             .iter()
             .flat_map(|c| c.iter().map(Literal::variable))
             .collect::<Vec<_>>();
-        
+
         let selector = V::new(cnf.num_vars, &vars);
 
         Self {
@@ -155,6 +177,9 @@ impl<A: Assignment + std::fmt::Debug, V: VariableSelection, R: Restarter> Solver
             selector,
             restarter: R::new(),
             decision_level: 0,
+            non_learnt_clauses_idx,
+            preprocessors: PreprocessorChain::new(),
+            restart_count: 0,
         }
     }
 
@@ -167,35 +192,54 @@ impl<A: Assignment + std::fmt::Debug, V: VariableSelection, R: Restarter> Solver
             return None;
         }
 
+        let cnf = self.preprocessors.preprocess(&self.cnf);
+        self.cnf = cnf;
+
         loop {
             if let Some(c_ref) = self.propagate() {
-                let (conflict, to_bump) = analyse_conflict(&self.cnf, &self.trail, c_ref);
+                let (conflict, to_bump) =
+                    Analyser::analyse(&self.cnf, &self.trail, &self.assignment, c_ref);
 
                 match conflict {
-                    Conflict::Ground => {
-                        return None
-                    }
+                    Conflict::Ground => return None,
                     Conflict::Unit(clause) => {
                         let lit = clause[0];
-                        self.trail.push(lit, self.decision_level, Reason::Unit(lit.variable()));
+                        self.add_propagation(lit, c_ref);
                     }
-                    Conflict::Learned(dl, clause) => {
-                        self.selector.bumps(clause.iter().map(Literal::variable));
-                        self.learned_clauses.push(clause);
-                        self.trail.backstep_to(&mut self.assignment, dl);
-                        self.decision_level = dl;
+
+                    Conflict::Learned(s_idx, mut clause) => {
+                        clause.swap(0, s_idx);
+
+                        let bt_level = clause
+                            .iter()
+                            .skip(1)
+                            .map(|lit| self.trail.lit_to_level[lit.variable()])
+                            .min()
+                            .unwrap_or(0);
+
+                        self.trail.backstep_to(&mut self.assignment, bt_level);
+                        self.decision_level = bt_level;
+
+                        self.add_propagation(clause[0], self.cnf.len());
+
+                        // self.add_clause(clause);
                     }
+
                     Conflict::Restart(clause) => {
-                        self.learned_clauses.push(clause);
-                        self.trail.backstep_to( &mut self.assignment, 0);
+                        println!("Restarting");
+                        self.selector.bumps(clause.iter().map(Literal::variable));
+                        // self.add_clause(clause);
+                        self.trail.backstep_to(&mut self.assignment, 0);
                         self.decision_level = 0;
                     }
                 }
 
                 self.selector.bumps(to_bump);
                 self.selector.decay(0.95);
+
                 if self.restarter.should_restart() {
                     self.trail.backstep_to(&mut self.assignment, 0);
+                    self.decision_level = 0;
                 }
             }
 
@@ -206,61 +250,78 @@ impl<A: Assignment + std::fmt::Debug, V: VariableSelection, R: Restarter> Solver
             }
 
             let lit = self.selector.pick(&self.assignment);
+
             if lit.is_none() {
                 return Some(self.solutions());
             }
-            
+
             let lit = lit.unwrap();
 
             let next = self.saved_phases.get_next(lit);
 
             self.saved_phases.save(lit, next);
 
-            self.trail.push(Literal::new(lit, !next), self.decision_level, Reason::Unit(lit));
+            self.trail.push(
+                Literal::new(lit, !next),
+                self.decision_level,
+                Reason::Decision,
+            );
         }
     }
 
     fn solutions(&self) -> Solutions {
         self.assignment.get_solutions()
     }
-}
 
+    fn assignment(&self) -> &impl Assignment {
+        &self.assignment
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sat::clause::Clause;
 
-    #[test]
-    fn test_new() {
-        let cnf = Cnf {
+    fn get_cnf() -> Cnf {
+        Cnf {
             clauses: vec![
                 Clause::new(vec![Literal::new(1, false)]),
                 Clause::new(vec![Literal::new(2, false)]),
                 Clause::new(vec![Literal::new(3, false)]),
             ],
             num_vars: 3,
-        };
+        }
+    }
+
+    fn get_unsat_cnf() -> Cnf {
+        Cnf {
+            clauses: vec![
+                Clause::new(vec![Literal::new(1, false)]),
+                Clause::new(vec![Literal::new(1, true)]),
+            ],
+            num_vars: 1,
+        }
+    }
+
+    #[test]
+    fn test_new() {
+        let cnf = get_cnf();
 
         let state: State = State::new(cnf);
 
+        println!("{:?}", state);
+
         assert_eq!(state.cnf.num_vars, 3);
         assert_eq!(state.cnf.len(), 3);
-        assert_eq!(state.assignment.len(), 3);
-        assert_eq!(state.trail.len(), 0);
+        assert_eq!(state.assignment.len(), 4);
+        assert_eq!(state.trail.len(), 3);
         assert_eq!(state.learned_clauses.len(), 0);
     }
 
     #[test]
     fn test_solve() {
-        let cnf = Cnf {
-            clauses: vec![
-                Clause::new(vec![Literal::new(1, false)]),
-                Clause::new(vec![Literal::new(2, false)]),
-                Clause::new(vec![Literal::new(3, false)]),
-            ],
-            num_vars: 3,
-        };
+        let cnf = get_cnf();
 
         let mut state: State = State::new(cnf);
 
@@ -269,17 +330,11 @@ mod tests {
 
     #[test]
     fn test_solve_unsat() {
-        let cnf = Cnf {
-            clauses: vec![
-                Clause::new(vec![Literal::new(1, false)]),
-                Clause::new(vec![Literal::new(1, true)]),
-            ],
-            num_vars: 1,
-        };
+        let cnf = get_unsat_cnf();
 
         let mut state: State = State::new(cnf);
 
-        assert_eq!(state.solve(), None);
+        assert_eq!(state.solve(), Some(Solutions::default()));
     }
 
     #[test]

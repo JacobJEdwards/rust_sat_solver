@@ -355,10 +355,14 @@ fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>>
                             continue;
                         }
                         clauses.push(vec![
-                            -i32::try_from(var1.encode(Size::try_from(board_size).expect("Invalid size")))
-                                .expect("Invalid variable"),
-                            -i32::try_from(var2.encode(Size::try_from(board_size).expect("Invalid size")))
-                                .expect("Invalid variable"),
+                            -i32::try_from(
+                                var1.encode(Size::try_from(board_size).expect("Invalid size")),
+                            )
+                            .expect("Invalid variable"),
+                            -i32::try_from(
+                                var2.encode(Size::try_from(board_size).expect("Invalid size")),
+                            )
+                            .expect("Invalid variable"),
                         ]);
                     }
                 }
@@ -374,10 +378,10 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
         for (c, &n) in row.iter().enumerate() {
             if n != 0 {
                 let var = Variable::new(r + 1, c + 1, n);
-                clauses.push(vec![
-                    i32::try_from(var.encode(Size::try_from(size).expect("Invalid size")))
-                        .expect("Invalid variable"),
-                ]);
+                clauses.push(vec![i32::try_from(
+                    var.encode(Size::try_from(size).expect("Invalid size")),
+                )
+                .expect("Invalid variable")]);
             }
         }
     }
@@ -402,7 +406,7 @@ impl Sudoku {
             for col in 1..=size {
                 for num in 1..=size {
                     let var = Variable::new(row, col, num);
-                    let encoded = var.encode(self.size);
+                    let encoded = var.encode(self.size) as i32;
                     if solutions.check(encoded) {
                         board[row - 1][col - 1] = num;
                     }

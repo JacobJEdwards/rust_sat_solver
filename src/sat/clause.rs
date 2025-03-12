@@ -9,8 +9,19 @@ pub struct Clause {
     pub deleted: bool,
 }
 
+impl FromIterator<Literal> for Clause {
+    fn from_iter<I: IntoIterator<Item = Literal>>(iter: I) -> Self {
+        Self {
+            literals: iter.into_iter().collect(),
+            lbd: 0,
+            deleted: false,
+        }
+    }
+}
+
 impl Clause {
-    #[must_use] pub const fn new(literals: Vec<Literal>) -> Self {
+    #[must_use]
+    pub const fn new(literals: Vec<Literal>) -> Self {
         Self {
             literals,
             lbd: 0,
@@ -18,7 +29,21 @@ impl Clause {
         }
     }
 
-    #[must_use] pub fn len(&self) -> usize {
+    pub fn push(&mut self, literal: Literal) {
+        if !self.literals.contains(&literal) {
+            self.literals.push(literal);
+        }
+    }
+
+    #[must_use]
+    pub fn is_tautology(&self) -> bool {
+        self.literals
+            .iter()
+            .any(|l| self.literals.contains(&l.negated()))
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.literals.len()
     }
 
@@ -34,15 +59,18 @@ impl Clause {
         self.literals.swap(i, j);
     }
 
-    #[must_use] pub fn is_unit(&self) -> bool {
+    #[must_use]
+    pub fn is_unit(&self) -> bool {
         self.len() == 1
     }
 
-    #[must_use] pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    #[must_use] pub const fn is_deleted(&self) -> bool {
+    #[must_use]
+    pub const fn is_deleted(&self) -> bool {
         self.deleted
     }
 

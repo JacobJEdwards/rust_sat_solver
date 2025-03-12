@@ -1,10 +1,9 @@
-use std::collections::{HashMap};
 use crate::sat::assignment::{Solutions, VecAssignment};
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
-use crate::sat::propagation::PropagationQueue;
-use crate::sat::state::State;
 use crate::sat::solver::Solver;
+use crate::sat::cdcl::State;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -43,7 +42,7 @@ impl SmtSolver {
                 } else {
                     self.var_values.insert(var.clone(), *val);
                 }
-            },
+            }
             TheoryConstraint::Geq(var, val) => {
                 // When adding x >= val, initialize x to val (tightest bound)
                 if let Some(current_val) = self.var_values.get(var) {
@@ -53,7 +52,7 @@ impl SmtSolver {
                 } else {
                     self.var_values.insert(var.clone(), *val);
                 }
-            },
+            }
             TheoryConstraint::Eq(var, val) => {
                 // For equality, just set the value
                 self.var_values.insert(var.clone(), *val);
@@ -62,11 +61,15 @@ impl SmtSolver {
 
         // Create variable mapping if needed
         let var_name = match &constraint {
-            TheoryConstraint::Geq(var, _) | TheoryConstraint::Eq(var, _) | TheoryConstraint::Leq(var, _) => var,
+            TheoryConstraint::Geq(var, _)
+            | TheoryConstraint::Eq(var, _)
+            | TheoryConstraint::Leq(var, _) => var,
         };
 
         let var_value = match &constraint {
-            TheoryConstraint::Geq(_, c) | TheoryConstraint::Eq(_, c) | TheoryConstraint::Leq(_, c) => c,
+            TheoryConstraint::Geq(_, c)
+            | TheoryConstraint::Eq(_, c)
+            | TheoryConstraint::Leq(_, c) => c,
         };
 
         let var_val = (var_name.clone(), *var_value);
@@ -98,18 +101,17 @@ impl SmtSolver {
                 if self.check_theory() {
                     println!("Found satisfying assignment: {:?}", self.var_values);
                     return true;
-                } 
-                    // Generate a conflict clause based on the violated constraints
-                    let conflict = self.generate_theory_conflict();
-                    println!("Theory conflict: {:?}", conflict);
+                }
+                // Generate a conflict clause based on the violated constraints
+                let conflict = self.generate_theory_conflict();
+                println!("Theory conflict: {:?}", conflict);
 
-                    if conflict.is_empty() {
-                        // If we can't generate a meaningful conflict, the problem is unsatisfiable
-                        return false;
-                    }
+                if conflict.is_empty() {
+                    // If we can't generate a meaningful conflict, the problem is unsatisfiable
+                    return false;
+                }
 
-                    self.cnf.add_clause(Clause::from(conflict));
-               
+                self.cnf.add_clause(Clause::from(conflict));
             } else {
                 println!("SAT solver found no solution");
                 return false;
@@ -123,25 +125,28 @@ impl SmtSolver {
         let mut var_constraints: HashMap<String, Vec<(&TheoryConstraint, bool)>> = HashMap::new();
 
         for ((var_name, value), lit) in &self.var_mappings {
-            let is_true = model.contains(*lit as usize);
+            let is_true = model.contains(*lit);
 
             for constraint in &self.theory_constraints {
                 match constraint {
                     TheoryConstraint::Leq(var, val) if var == var_name && *val == *value => {
-                        var_constraints.entry(var_name.clone())
+                        var_constraints
+                            .entry(var_name.clone())
                             .or_default()
                             .push((constraint, is_true));
-                    },
+                    }
                     TheoryConstraint::Geq(var, val) if var == var_name && *val == *value => {
-                        var_constraints.entry(var_name.clone())
+                        var_constraints
+                            .entry(var_name.clone())
                             .or_default()
                             .push((constraint, is_true));
-                    },
+                    }
                     TheoryConstraint::Eq(var, val) if var == var_name && *val == *value => {
-                        var_constraints.entry(var_name.clone())
+                        var_constraints
+                            .entry(var_name.clone())
                             .or_default()
                             .push((constraint, is_true));
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -164,7 +169,7 @@ impl SmtSolver {
                             // x <= val is false, so x > val
                             lower_bound = lower_bound.max(*val - 1);
                         }
-                    },
+                    }
                     TheoryConstraint::Geq(_, val) => {
                         if is_true {
                             // x >= val is true
@@ -173,7 +178,7 @@ impl SmtSolver {
                             // x >= val is false, so x < val
                             upper_bound = upper_bound.min(*val + 1);
                         }
-                    },
+                    }
                     TheoryConstraint::Eq(_, val) => {
                         if is_true {
                             // x == val is true
@@ -182,7 +187,7 @@ impl SmtSolver {
                             // x == val is false
                             // We need to exclude this value
                         }
-                    },
+                    }
                 }
             }
 
@@ -215,19 +220,19 @@ impl SmtSolver {
         }
 
         println!("Updated variable values: {:?}", self.var_values);
-    }    
+    }
     fn find_constraint_type(&self, var_name: &String, value: i32) -> Option<TheoryConstraint> {
         for constraint in &self.theory_constraints {
             match constraint {
                 TheoryConstraint::Leq(name, val) if name == var_name && *val == value => {
                     return Some(constraint.clone());
-                },
+                }
                 TheoryConstraint::Geq(name, val) if name == var_name && *val == value => {
                     return Some(constraint.clone());
-                },
+                }
                 TheoryConstraint::Eq(name, val) if name == var_name && *val == value => {
                     return Some(constraint.clone());
-                },
+                }
                 _ => continue,
             }
         }
@@ -241,23 +246,32 @@ impl SmtSolver {
                 TheoryConstraint::Leq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val > *val {
-                            println!("Constraint violated: {} <= {} (actual: {})", var, val, var_val);
+                            println!(
+                                "Constraint violated: {} <= {} (actual: {})",
+                                var, val, var_val
+                            );
                             return false;
                         }
                     }
-                },
+                }
                 TheoryConstraint::Geq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val < *val {
-                            println!("Constraint violated: {} >= {} (actual: {})", var, val, var_val);
+                            println!(
+                                "Constraint violated: {} >= {} (actual: {})",
+                                var, val, var_val
+                            );
                             return false;
                         }
                     }
-                },
+                }
                 TheoryConstraint::Eq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val != *val {
-                            println!("Constraint violated: {} == {} (actual: {})", var, val, var_val);
+                            println!(
+                                "Constraint violated: {} == {} (actual: {})",
+                                var, val, var_val
+                            );
                             return false;
                         }
                     }
@@ -282,14 +296,14 @@ impl SmtSolver {
                             violated_constraints.push(constraint.clone());
                         }
                     }
-                },
+                }
                 TheoryConstraint::Geq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val < *val {
                             violated_constraints.push(constraint.clone());
                         }
                     }
-                },
+                }
                 TheoryConstraint::Eq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val != *val {
@@ -307,12 +321,12 @@ impl SmtSolver {
                     if let Some(&lit) = self.var_mappings.get(&(var, val)) {
                         conflict_lits.push(-lit);
                     }
-                },
+                }
                 TheoryConstraint::Geq(var, val) => {
                     if let Some(&lit) = self.var_mappings.get(&(var, val)) {
                         conflict_lits.push(-lit);
                     }
-                },
+                }
                 TheoryConstraint::Eq(var, val) => {
                     if let Some(&lit) = self.var_mappings.get(&(var, val)) {
                         conflict_lits.push(-lit);
@@ -324,7 +338,8 @@ impl SmtSolver {
         // If no specific conflicts, create a general conflict
         if conflict_lits.is_empty() && !self.var_mappings.is_empty() {
             // Choose a subset of assignments to exclude
-            for ((var, _), lit) in self.var_mappings.iter().take(3) {  // Limit to prevent huge clauses
+            for ((var, _), lit) in self.var_mappings.iter().take(3) {
+                // Limit to prevent huge clauses
                 if self.var_values.contains_key(var) {
                     conflict_lits.push(-lit);
                 }
@@ -332,4 +347,5 @@ impl SmtSolver {
         }
 
         conflict_lits
-    }}
+    }
+}

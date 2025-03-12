@@ -8,30 +8,36 @@ pub struct Literal {
 }
 
 impl Literal {
-    #[must_use] pub const fn new(var: usize, polarity: bool) -> Self {
+    #[must_use]
+    pub const fn new(var: usize, polarity: bool) -> Self {
         Self { var, polarity }
     }
 
-    #[must_use] pub const fn negated(&self) -> Self {
+    #[must_use]
+    pub const fn negated(&self) -> Self {
         Self {
             var: self.var,
             polarity: !self.polarity,
         }
     }
 
-    #[must_use] pub const fn is_negated(&self) -> bool {
+    #[must_use]
+    pub const fn is_negated(&self) -> bool {
         !self.polarity
     }
 
-    #[must_use] pub const fn is_positive(&self) -> bool {
+    #[must_use]
+    pub const fn is_positive(&self) -> bool {
         self.polarity
     }
 
-    #[must_use] pub const fn polarity(&self) -> bool {
+    #[must_use]
+    pub const fn polarity(&self) -> bool {
         self.polarity
     }
 
-    #[must_use] pub const fn variable(&self) -> usize {
+    #[must_use]
+    pub const fn variable(&self) -> usize {
         self.var
     }
 }
@@ -93,14 +99,14 @@ mod tests {
 
     #[test]
     fn test_literal_from_i32() {
-        assert_eq!(Literal::from(1), Literal::new(1, false));
-        assert_eq!(Literal::from(-1), Literal::new(1, true));
+        assert_eq!(Literal::from(1), Literal::new(1, true));
+        assert_eq!(Literal::from(-1), Literal::new(1, false));
     }
 
     #[test]
     fn test_literal_into_i32() {
-        assert_eq!(i32::from(&Literal::new(1, false)), 1);
-        assert_eq!(i32::from(&Literal::new(1, true)), -1);
+        assert_eq!(i32::from(&Literal::new(1, true)), 1);
+        assert_eq!(i32::from(&Literal::new(1, false)), -1);
     }
 
     #[test]

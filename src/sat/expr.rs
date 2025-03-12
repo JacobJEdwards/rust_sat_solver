@@ -9,61 +9,72 @@ pub enum Expr {
 }
 
 impl Expr {
-    #[must_use] pub const fn is_val(&self) -> bool {
+    #[must_use]
+    pub const fn is_val(&self) -> bool {
         matches!(self, Self::Val(_))
     }
 
-    #[must_use] pub const fn is_var(&self) -> bool {
+    #[must_use]
+    pub const fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
 
-    #[must_use] pub const fn is_not(&self) -> bool {
+    #[must_use]
+    pub const fn is_not(&self) -> bool {
         matches!(self, Self::Not(_))
     }
 
-    #[must_use] pub const fn is_and(&self) -> bool {
+    #[must_use]
+    pub const fn is_and(&self) -> bool {
         matches!(self, Self::And(_, _))
     }
 
-    #[must_use] pub const fn is_or(&self) -> bool {
+    #[must_use]
+    pub const fn is_or(&self) -> bool {
         matches!(self, Self::Or(_, _))
     }
 
-    #[must_use] pub const fn is_true(&self) -> bool {
+    #[must_use]
+    pub const fn is_true(&self) -> bool {
         match self {
             Self::Val(b) => *b,
             _ => false,
         }
     }
 
-    #[must_use] pub const fn is_false(&self) -> bool {
+    #[must_use]
+    pub const fn is_false(&self) -> bool {
         match self {
             Self::Val(b) => !*b,
             _ => false,
         }
     }
 
-    #[must_use] pub fn unwrap_val(&self) -> bool {
+    #[must_use]
+    pub fn unwrap_val(&self) -> bool {
         match self {
             Self::Val(b) => *b,
             _ => panic!("Not a value"),
         }
     }
 
-    #[must_use] pub fn unwrap_var(&self) -> usize {
+    #[must_use]
+    pub fn unwrap_var(&self) -> usize {
         match self {
             Self::Var(i) => *i,
             _ => panic!("Not a variable"),
         }
     }
 
-    #[must_use] pub fn ors(e: &[Self]) -> Self {
+    #[must_use]
+    pub fn ors(e: &[Self]) -> Self {
         e.iter().fold(Self::Val(false), |acc, x| {
             Self::Or(Box::new(acc), Box::new(x.clone()))
         })
     }
 
-    #[must_use] pub fn ands(e: &[Self]) -> Self {
+    #[must_use]
+    pub fn ands(e: &[Self]) -> Self {
         e.iter().fold(Self::Val(true), |acc, x| {
             Self::And(Box::new(acc), Box::new(x.clone()))
         })
@@ -92,7 +103,8 @@ impl From<i32> for Expr {
     }
 }
 
-#[must_use] pub fn demorgans_laws(expr: &Expr) -> Expr {
+#[must_use]
+pub fn demorgans_laws(expr: &Expr) -> Expr {
     match expr {
         Expr::Not(e) => match *e.clone() {
             Expr::Var(i) => Expr::Not(Box::new(Expr::Var(i))),
@@ -114,7 +126,8 @@ impl From<i32> for Expr {
     }
 }
 
-#[must_use] pub fn distributive_laws(expr: &Expr) -> Expr {
+#[must_use]
+pub fn distributive_laws(expr: &Expr) -> Expr {
     let expr = expr.clone();
     match expr {
         Expr::And(e1, e2) => {
@@ -144,7 +157,8 @@ impl From<i32> for Expr {
     }
 }
 
-#[must_use] pub fn apply_laws(expr: &Expr) -> Expr {
+#[must_use]
+pub fn apply_laws(expr: &Expr) -> Expr {
     let mut expr = expr.clone();
     loop {
         let new_expr = distributive_laws(&demorgans_laws(&expr));
@@ -176,21 +190,12 @@ mod tests {
     #[test]
     fn test_distributive_laws() {
         let expr = Expr::And(
-            Box::new(Expr::Or(
-                Box::new(Expr::Var(1)),
-                Box::new(Expr::Var(2)),
-            )),
+            Box::new(Expr::Or(Box::new(Expr::Var(1)), Box::new(Expr::Var(2)))),
             Box::new(Expr::Var(3)),
         );
         let expected = Expr::Or(
-            Box::new(Expr::And(
-                Box::new(Expr::Var(1)),
-                Box::new(Expr::Var(3)),
-            )),
-            Box::new(Expr::And(
-                Box::new(Expr::Var(2)),
-                Box::new(Expr::Var(3)),
-            )),
+            Box::new(Expr::And(Box::new(Expr::Var(1)), Box::new(Expr::Var(3)))),
+            Box::new(Expr::And(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))),
         );
         assert_eq!(distributive_laws(&expr), expected);
     }
@@ -198,21 +203,12 @@ mod tests {
     #[test]
     fn test_apply_laws() {
         let expr = Expr::And(
-            Box::new(Expr::Or(
-                Box::new(Expr::Var(1)),
-                Box::new(Expr::Var(2)),
-            )),
+            Box::new(Expr::Or(Box::new(Expr::Var(1)), Box::new(Expr::Var(2)))),
             Box::new(Expr::Var(3)),
         );
         let expected = Expr::Or(
-            Box::new(Expr::And(
-                Box::new(Expr::Var(1)),
-                Box::new(Expr::Var(3)),
-            )),
-            Box::new(Expr::And(
-                Box::new(Expr::Var(2)),
-                Box::new(Expr::Var(3)),
-            )),
+            Box::new(Expr::And(Box::new(Expr::Var(1)), Box::new(Expr::Var(3)))),
+            Box::new(Expr::And(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))),
         );
         assert_eq!(apply_laws(&expr), expected);
     }

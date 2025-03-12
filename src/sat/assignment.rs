@@ -11,22 +11,26 @@ pub enum VarState {
 }
 
 impl VarState {
-    #[must_use] pub const fn is_assigned(self) -> bool {
+    #[must_use]
+    pub const fn is_assigned(self) -> bool {
         matches!(self, Self::Assigned(_))
     }
 
-    #[must_use] pub const fn is_unassigned(self) -> bool {
+    #[must_use]
+    pub const fn is_unassigned(self) -> bool {
         !self.is_assigned()
     }
 
-    #[must_use] pub const fn is_true(self) -> bool {
+    #[must_use]
+    pub const fn is_true(self) -> bool {
         match self {
             Self::Assigned(b) => b,
             Self::Unassigned => false,
         }
     }
 
-    #[must_use] pub const fn is_false(self) -> bool {
+    #[must_use]
+    pub const fn is_false(self) -> bool {
         match self {
             Self::Assigned(b) => !b,
             Self::Unassigned => false,
@@ -70,16 +74,21 @@ pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output =
         self[i].into()
     }
 
+    fn all_assigned(&self) -> bool;
+
     fn literal_value(&self, l: Literal) -> Option<bool> {
         self.var_value(l.variable()).map(|b| b ^ l.is_negated())
     }
-    
+
     fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VecAssignment(Vec<VarState>);
-
 
 impl Index<usize> for VecAssignment {
     type Output = VarState;
@@ -96,10 +105,10 @@ impl IndexMut<usize> for VecAssignment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Solutions(Vec<usize>);
+pub struct Solutions(Vec<i32>);
 
 impl Index<usize> for Solutions {
-    type Output = usize;
+    type Output = i32;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
@@ -112,39 +121,48 @@ impl IndexMut<usize> for Solutions {
     }
 }
 
-
 impl Solutions {
-    pub fn new(s: Vec<usize>) -> Self {
-        Self(s)
+    #[must_use]
+    pub fn new(s: Vec<i32>) -> Self {
+        Self(s.iter().filter(|i| **i != 0).copied().collect())
     }
-    
-    pub fn iter(&self) -> impl Iterator<Item = &usize> {
+
+    pub fn iter(&self) -> impl Iterator<Item = &i32> {
         self.0.iter()
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut usize> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut i32> {
         self.0.iter_mut()
     }
-    
-    pub fn check(&self, i: usize) -> bool {
+
+    #[must_use]
+    pub fn check(&self, i: i32) -> bool {
         self.0.contains(&i)
     }
 
-    pub fn empty() -> Self {
-        Solutions(Vec::new())
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self(Vec::new())
     }
-    
+
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.len()
     }
-    
-    pub fn contains(&self, i: usize) -> bool {
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[must_use]
+    pub fn contains(&self, i: i32) -> bool {
         self.0.contains(&i)
     }
 }
 
 impl Assignment for VecAssignment {
     fn new(n: usize) -> Self {
-        Self(vec![VarState::Unassigned; n + 1])
+        Self(vec![VarState::Unassigned; n])
     }
 
     fn set(&mut self, lit: usize, b: bool) {
@@ -157,70 +175,86 @@ impl Assignment for VecAssignment {
 
     fn get_solutions(&self) -> Solutions {
         Solutions::new(
-        self.0
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| match s {
-                VarState::Assigned(true) => Some(i),
-                _ => None,
-            })
-            .collect()
+            self.0
+                .iter()
+                .enumerate()
+                .filter_map(|(i, s)| match s {
+                    VarState::Assigned(true) => Some(i as i32),
+                    VarState::Assigned(false) => Some(-(i as i32)),
+                    _ => None,
+                })
+                .collect(),
         )
     }
-    
+
+    fn all_assigned(&self) -> bool {
+        self.0.iter().all(|s| s.is_assigned())
+    }
+
     fn len(&self) -> usize {
         self.0.len()
     }
 }
 
-pub struct HashMapAssignment(HashMap<usize, VarState>);
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HashMapAssignment {
+    map: HashMap<usize, VarState>,
+    num_vars: usize,
+}
 
 impl Index<usize> for HashMapAssignment {
     type Output = VarState;
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.0.get(&index).unwrap_or(&VarState::Unassigned)
+        self.map.get(&index).unwrap_or(&VarState::Unassigned)
     }
 }
 
 impl IndexMut<usize> for HashMapAssignment {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.0.entry(index).or_insert(VarState::Unassigned)
+        self.map.entry(index).or_insert(VarState::Unassigned)
     }
 }
 
 impl Assignment for HashMapAssignment {
-    fn new(_: usize) -> Self {
-        Self(HashMap::default())
+    fn new(num_vars: usize) -> Self {
+        Self {
+            map: HashMap::default(),
+            num_vars,
+        }
     }
 
     fn set(&mut self, lit: usize, b: bool) {
-        self.0.insert(lit, VarState::Assigned(b));
+        self.map.insert(lit, VarState::Assigned(b));
     }
 
     fn unassign(&mut self, i: usize) {
-        self.0.remove(&i);
+        self.map.remove(&i);
     }
 
     fn get_solutions(&self) -> Solutions {
         Solutions::new(
-        self.0
-            .iter()
-            .filter_map(|(i, s)| match s {
-                VarState::Assigned(true) => Some(i),
-                _ => None,
-            })
-            .copied()
-            .collect()
+            self.map
+                .iter()
+                .filter_map(|(i, s)| match s {
+                    VarState::Assigned(true) => Some(*i as i32),
+                    VarState::Assigned(false) => Some(-(*i as i32)),
+                    _ => None,
+                })
+                .collect(),
         )
     }
 
     fn is_assigned(&self, i: usize) -> bool {
-        self.0.contains_key(&i)
+        self.map.contains_key(&i)
     }
-    
+
+    fn all_assigned(&self) -> bool {
+        self.map.len() == self.num_vars && self.map.values().all(|s| s.is_assigned())
+    }
+
     fn len(&self) -> usize {
-        self.0.len()
+        self.map.len()
     }
 }
 
@@ -270,10 +304,10 @@ mod tests {
         assert_eq!(a.var_value(1), None);
 
         let s = a.get_solutions();
-        
+
         assert_eq!(s, Solutions::new(vec![3]));
     }
-    
+
     #[test]
     fn test_hashmap_assignment() {
         let mut a = HashMapAssignment::new(3);
@@ -298,10 +332,10 @@ mod tests {
         assert_eq!(a.var_value(1), None);
 
         let s = a.get_solutions();
-        
+
         assert_eq!(s, Solutions::new(vec![3]));
     }
-    
+
     #[test]
     fn test_assignment_unassigned() {
         let a = VecAssignment::new(3);
@@ -310,4 +344,3 @@ mod tests {
         assert!(!a.is_assigned(3));
     }
 }
-    
