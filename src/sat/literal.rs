@@ -1,67 +1,176 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use core::ops::{Neg, Not};
+use std::fmt::Debug;
+use std::hash::Hash;
+
+pub type Variable = u32;
+
+pub trait Literal: Copy + Debug + Eq + Hash + Default {
+    fn new(var: Variable, polarity: bool) -> Self;
+    fn variable(self) -> Variable;
+    fn polarity(self) -> bool;
+    
+    #[must_use]
+    fn negated(self) -> Self;
+
+    fn is_negated(self) -> bool {
+        !self.polarity()
+    }
+
+    fn is_positive(self) -> bool {
+        !self.polarity()
+    }
+
+    #[must_use]
+    fn from_i32(value: i32) -> Self {
+        let polarity = value.is_positive();
+        let var = value.unsigned_abs();
+        Self::new(var, polarity)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Literal {
-    var: usize,
+pub struct PackedLiteral(u32);
+
+impl Literal for PackedLiteral {
+    fn new(var: Variable, polarity: bool) -> Self {
+        Self(var & 0x7FFF_FFFF | ((u32::from(polarity)) << 31))
+    }
+
+    fn variable(self) -> Variable {
+        self.0 & 0x7FFF_FFFF
+    }
+
+    fn polarity(self) -> bool {
+        (self.0 >> 31) != 0
+    }
+
+    fn negated(self) -> Self {
+        Self(self.0 & 0x7FFF_FFFF)
+    }
+}
+
+impl Neg for PackedLiteral {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Not for PackedLiteral {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Neg for &PackedLiteral {
+    type Output = PackedLiteral;
+
+    fn neg(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Not for &PackedLiteral {
+    type Output = PackedLiteral;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct StructLiteral {
+    value: u32,
     polarity: bool,
 }
 
-impl Literal {
-    #[must_use]
-    pub const fn new(var: usize, polarity: bool) -> Self {
-        Self { var, polarity }
+impl Literal for StructLiteral {
+    fn new(var: Variable, polarity: bool) -> Self {
+        Self { value: var, polarity }
+    }
+    fn variable(self) -> Variable {
+        self.value
+    }
+    
+    fn polarity(self) -> bool {
+        self.polarity
     }
 
     #[must_use]
-    pub const fn negated(&self) -> Self {
+    fn negated(self) -> Self {
         Self {
-            var: self.var,
+            value: self.value,
             polarity: !self.polarity,
         }
     }
+}
 
-    #[must_use]
-    pub const fn is_negated(&self) -> bool {
-        !self.polarity
-    }
+impl Neg for StructLiteral {
+    type Output = Self;
 
-    #[must_use]
-    pub const fn is_positive(&self) -> bool {
-        self.polarity
-    }
-
-    #[must_use]
-    pub const fn polarity(&self) -> bool {
-        self.polarity
-    }
-
-    #[must_use]
-    pub const fn variable(&self) -> usize {
-        self.var
+    fn neg(self) -> Self::Output {
+        self.negated()
     }
 }
 
-impl From<i32> for Literal {
-    fn from(l: i32) -> Self {
-        let polarity = l.is_positive();
-        let var = l.unsigned_abs() as usize;
+impl Not for StructLiteral {
+    type Output = Self;
 
-        Self { var, polarity }
+    fn not(self) -> Self::Output {
+        self.negated()
     }
 }
 
-impl From<&Literal> for i32 {
-    fn from(l: &Literal) -> Self {
-        if l.polarity {
-            Self::try_from(l.var).expect("Literal variable is too large")
+impl Neg for &StructLiteral {
+    type Output = StructLiteral;
+
+    fn neg(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Not for &StructLiteral {
+    type Output = StructLiteral;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct DoubleLiteral(u32);
+
+impl Literal for DoubleLiteral {
+    fn new(var: Variable, polarity: bool) -> Self {
+        if polarity {
+            Self(var * 2)
         } else {
-            -Self::try_from(l.var).expect("Literal variable is too large")
+            Self(var * 2 + 1)
+        }
+    }
+
+    fn variable(self) -> Variable {
+        self.0 / 2
+    }
+
+    fn polarity(self) -> bool {
+        self.0 % 2 != 0
+    }
+
+    fn negated(self) -> Self {
+        if self.polarity() {
+            Self(self.0 + 1)
+        } else {
+            Self(self.0 - 1)
         }
     }
 }
 
-impl Neg for Literal {
+impl Neg for DoubleLiteral {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -69,7 +178,7 @@ impl Neg for Literal {
     }
 }
 
-impl Not for Literal {
+impl Not for DoubleLiteral {
     type Output = Self;
 
     fn not(self) -> Self::Output {
@@ -77,47 +186,95 @@ impl Not for Literal {
     }
 }
 
-impl Neg for &Literal {
-    type Output = Literal;
+impl Neg for &DoubleLiteral {
+    type Output = DoubleLiteral;
 
     fn neg(self) -> Self::Output {
         self.negated()
     }
 }
 
-impl Not for &Literal {
-    type Output = Literal;
+impl Not for &DoubleLiteral {
+    type Output = DoubleLiteral;
 
     fn not(self) -> Self::Output {
         self.negated()
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct NegativeLiteral(i32);
+
+impl Literal for NegativeLiteral {
+    fn new(var: Variable, polarity: bool) -> Self {
+        if polarity {
+            Self(var as i32)
+        } else {
+            Self(-(var as i32))
+        }
+    }
+
+    fn variable(self) -> Variable {
+        self.0.unsigned_abs()
+    }
+
+    fn polarity(self) -> bool {
+        self.0.is_positive()
+    }
+
+    fn negated(self) -> Self {
+        Self(-self.0)
+    }
+}
+
+impl Neg for NegativeLiteral {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Not for NegativeLiteral {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Neg for &NegativeLiteral {
+    type Output = NegativeLiteral;
+
+    fn neg(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+impl Not for &NegativeLiteral {
+    type Output = NegativeLiteral;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
+
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_literal_from_i32() {
-        assert_eq!(Literal::from(1), Literal::new(1, true));
-        assert_eq!(Literal::from(-1), Literal::new(1, false));
-    }
-
-    #[test]
-    fn test_literal_into_i32() {
-        assert_eq!(i32::from(&Literal::new(1, true)), 1);
-        assert_eq!(i32::from(&Literal::new(1, false)), -1);
-    }
-
-    #[test]
     fn test_literal_neg() {
-        assert_eq!(-Literal::new(1, false), Literal::new(1, true));
-        assert_eq!(-Literal::new(1, true), Literal::new(1, false));
+        assert_eq!(-PackedLiteral::new(1, false), PackedLiteral::new(1, true));
+        assert_eq!(-PackedLiteral::new(1, true), PackedLiteral::new(1, false));
     }
 
     #[test]
     fn test_literal_not() {
-        assert_eq!(!Literal::new(1, false), Literal::new(1, true));
-        assert_eq!(!Literal::new(1, true), Literal::new(1, false));
+        assert_eq!(!PackedLiteral::new(1, false), PackedLiteral::new(1, true));
+        assert_eq!(!PackedLiteral::new(1, true), PackedLiteral::new(1, false));
     }
 }

@@ -1,33 +1,33 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
-use crate::sat::assignment::{Assignment, Solutions};
-use crate::sat::literal::Literal;
+use crate::sat::assignment::Solutions;
+use crate::sat::literal::{Literal, PackedLiteral};
 use std::ops::{Index, IndexMut};
 
 pub type DecisionLevel = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Cnf {
-    pub clauses: Vec<Clause>,
+pub struct Cnf<T: Literal> {
+    pub clauses: Vec<Clause<T>>,
     pub num_vars: usize,
 }
 
-impl Index<usize> for Cnf {
-    type Output = Clause;
+impl <T: Literal> Index<usize> for Cnf<T> {
+    type Output = Clause<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.clauses[index]
     }
 }
 
-impl IndexMut<usize> for Cnf {
+impl <T: Literal> IndexMut<usize> for Cnf<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.clauses[index]
     }
 }
 
-impl Cnf {
+impl <T: Literal> Cnf<T> {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
         let clauses: Vec<_> = clauses
             .into_iter()
@@ -38,28 +38,31 @@ impl Cnf {
         let num_vars = clauses
             .iter()
             .flat_map(Clause::iter)
-            .map(Literal::variable)
+            .map(|l: &T| l.variable())
             .max()
             .unwrap_or(0)
             + 1;
 
-        Self { clauses, num_vars }
+        Self {
+            clauses,
+            num_vars: num_vars as usize,
+        }
     }
 
     pub fn remove(&mut self, idx: usize) {
         self.clauses.remove(idx);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Clause> {
+    pub fn iter(&self) -> impl Iterator<Item = &Clause<T>> {
         self.clauses.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Clause> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Clause<T>> {
         self.clauses.iter_mut()
     }
 
-    pub fn add_clause(&mut self, clause: Clause) {
-        let max_var = clause.iter().map(Literal::variable).max().unwrap_or(0);
+    pub fn add_clause(&mut self, clause: Clause<T>) {
+        let max_var = clause.iter().map(|l| l.variable()).max().unwrap_or(0) as usize;
 
         self.clauses.push(clause);
 
@@ -86,18 +89,20 @@ impl Cnf {
     pub fn verify(&self, solutions: &Solutions) -> bool {
         self.iter().all(|clause| {
             clause.iter().any(|&lit| {
+                let var = i32::try_from(lit.variable()).unwrap_or(0);
+
                 if lit.is_negated() {
-                    solutions.contains(-(lit.variable() as i32))
+                    solutions.contains(-var)
                 } else {
-                    solutions.contains(lit.variable() as i32)
+                    solutions.contains(var)
                 }
             })
         })
     }
 }
 
-impl FromIterator<Clause> for Cnf {
-    fn from_iter<T: IntoIterator<Item = Clause>>(iter: T) -> Self {
+impl <L: Literal> FromIterator<Clause<L>> for Cnf<L> {
+    fn from_iter<T: IntoIterator<Item = Clause<L>>>(iter: T) -> Self {
         let mut cnf = Self::default();
         for clause in iter {
             cnf.add_clause(clause);
@@ -107,18 +112,13 @@ impl FromIterator<Clause> for Cnf {
 }
 
 #[must_use]
-pub fn to_cnf(expr: &Expr) -> Cnf {
+pub fn to_cnf<T: Literal>(expr: &Expr) -> Cnf<T> {
     let expr = apply_laws(expr);
     let clauses = to_clauses(&expr);
-    Cnf::new(
-        clauses
-            .iter()
-            .map(|c| c.iter().map(std::convert::Into::into).collect())
-            .collect(),
-    )
+    Cnf::from_iter(clauses)
 }
 
-fn to_clauses(expr: &Expr) -> Vec<Clause> {
+fn to_clauses<T: Literal>(expr: &Expr) -> Vec<Clause<T>> {
     match expr {
         Expr::And(e1, e2) => {
             let mut c1 = to_clauses(e1);
@@ -130,7 +130,7 @@ fn to_clauses(expr: &Expr) -> Vec<Clause> {
     }
 }
 
-fn to_clause(expr: &Expr) -> Clause {
+fn to_clause<T: Literal>(expr: &Expr) -> Clause<T> {
     match expr {
         Expr::Or(e1, e2) => {
             let mut c1 = to_clause(e1);
@@ -142,15 +142,18 @@ fn to_clause(expr: &Expr) -> Clause {
     }
 }
 
-fn to_literal(expr: &Expr) -> Literal {
+fn to_literal<T: Literal>(expr: &Expr) -> T {
     match expr {
-        Expr::Var(i) => Literal::new(*i, false),
-        Expr::Not(e) => -to_literal(e),
+        Expr::Var(i) => T::new(*i, false),
+        Expr::Not(e) => {
+            let lit: T = to_literal(e);
+            lit.negated()
+        }
         _ => panic!("Not a literal"),
     }
 }
 
-fn to_expr(clause: &Clause) -> Expr {
+fn to_expr<T: Literal>(clause: &Clause<T>) -> Expr {
     let mut iter = clause.iter();
     let first = iter.next().unwrap();
     let mut expr = to_expr_literal(*first);
@@ -160,7 +163,7 @@ fn to_expr(clause: &Clause) -> Expr {
     expr
 }
 
-fn to_expr_literal(literal: Literal) -> Expr {
+fn to_expr_literal<T: Literal>(literal: T) -> Expr {
     if literal.is_negated() {
         Expr::Not(Box::new(Expr::Var(literal.variable())))
     } else {
@@ -168,16 +171,16 @@ fn to_expr_literal(literal: Literal) -> Expr {
     }
 }
 
-impl From<Expr> for Cnf {
+impl <T: Literal> From<Expr> for Cnf<T> {
     fn from(expr: Expr) -> Self {
         to_cnf(&expr)
     }
 }
 
-impl TryFrom<Cnf> for Expr {
+impl <T: Literal> TryFrom<Cnf<T>> for Expr {
     type Error = &'static str;
 
-    fn try_from(cnf: Cnf) -> Result<Self, Self::Error> {
+    fn try_from(cnf: Cnf<T>) -> Result<Self, Self::Error> {
         let mut iter = cnf.iter();
         let first = iter.next().ok_or("Empty CNF")?;
         let mut expr = to_expr(first);
@@ -198,13 +201,13 @@ mod tests {
             Box::new(Expr::Var(1)),
             Box::new(Expr::And(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))),
         );
-        let cnf = to_cnf(&expr);
+        let cnf: Cnf<PackedLiteral> = to_cnf(&expr);
         assert_eq!(cnf.len(), 2);
     }
 
     #[test]
     fn test_to_expr() {
-        let clause = Clause::from(vec![1, 2, 3]);
+        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
         let expr = to_expr(&clause);
         assert_eq!(
             expr,

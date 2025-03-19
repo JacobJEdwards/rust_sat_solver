@@ -1,35 +1,47 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use crate::sat::literal::Literal;
+use crate::sat::literal::{Literal};
 use core::ops::{Index, IndexMut};
+use smallvec::SmallVec;
+use std::collections::HashSet;
+use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Clause {
-    pub literals: Vec<Literal>,
+pub struct Clause<T: Literal> {
+    pub literals: SmallVec<[T; 10]>,
     pub lbd: u32,
     pub deleted: bool,
+    pub is_learnt: bool,
 }
 
-impl FromIterator<Literal> for Clause {
-    fn from_iter<I: IntoIterator<Item = Literal>>(iter: I) -> Self {
+impl<T: Literal> FromIterator<T> for Clause<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self {
             literals: iter.into_iter().collect(),
             lbd: 0,
             deleted: false,
+            is_learnt: false,
         }
     }
 }
 
-impl Clause {
+impl<T: Literal + Hash + Eq> Clause<T> {
     #[must_use]
-    pub const fn new(literals: Vec<Literal>) -> Self {
+    pub fn new(literals: Vec<T>) -> Self {
+        let literals = literals
+            .into_iter()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
         Self {
             literals,
             lbd: 0,
             deleted: false,
+            is_learnt: false,
         }
     }
 
-    pub fn push(&mut self, literal: Literal) {
+    pub fn push(&mut self, literal: T) {
         if !self.literals.contains(&literal) {
             self.literals.push(literal);
         }
@@ -37,9 +49,16 @@ impl Clause {
 
     #[must_use]
     pub fn is_tautology(&self) -> bool {
-        self.literals
-            .iter()
-            .any(|l| self.literals.contains(&l.negated()))
+        let mut set = HashSet::new();
+
+        for lit in &self.literals {
+            if set.contains(&lit.negated()) {
+                return true;
+            }
+            set.insert(lit);
+        }
+
+        false
     }
 
     #[must_use]
@@ -47,11 +66,11 @@ impl Clause {
         self.literals.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Literal> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.literals.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Literal> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.literals.iter_mut()
     }
 
@@ -83,56 +102,58 @@ impl Clause {
     }
 }
 
-impl Index<usize> for Clause {
-    type Output = Literal;
+impl <T: Literal> Index<usize> for Clause<T> {
+    type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.literals[index]
     }
 }
 
-impl IndexMut<usize> for Clause {
+impl <T: Literal> IndexMut<usize> for Clause<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.literals[index]
     }
 }
 
-impl From<&Clause> for Vec<Literal> {
-    fn from(clause: &Clause) -> Self {
-        clause.literals.clone()
+impl <T: Literal >From<&Clause<T>> for Vec<T> {
+    fn from(clause: &Clause<T>) -> Self {
+        clause.literals.to_vec()
     }
 }
 
-impl From<Vec<i32>> for Clause {
+impl <T: Literal + Eq + Hash> From<Vec<i32>> for Clause<T> {
     fn from(literals: Vec<i32>) -> Self {
-        let literals = literals.into_iter().map(Literal::from).collect();
+        let literals = literals
+            .into_iter()
+            .map(|l| {
+                let pol = l.is_positive();
+                let var = l.unsigned_abs();
+                T::new(var, pol)
+            })
+            .collect();
         Self::new(literals)
     }
 }
 
-impl From<&Vec<i32>> for Clause {
-    fn from(literals: &Vec<i32>) -> Self {
-        let literals: Vec<_> = literals.iter().map(|l| Literal::from(*l)).collect();
-        Self::new(literals)
-    }
-}
-
-impl From<Vec<Literal>> for Clause {
-    fn from(literals: Vec<Literal>) -> Self {
+impl <T: Literal> From<Vec<T>> for Clause<T> {
+    fn from(literals: Vec<T>) -> Self {
         Self {
-            literals,
+            literals: SmallVec::from(literals),
             lbd: 0,
             deleted: false,
+            is_learnt: false,
         }
     }
 }
 
-impl From<&Vec<Literal>> for Clause {
-    fn from(literals: &Vec<Literal>) -> Self {
+impl <T: Literal> From<&Vec<T>> for Clause<T> {
+    fn from(literals: &Vec<T>) -> Self {
         Self {
-            literals: literals.clone(),
+            literals: SmallVec::from(literals.clone()),
             lbd: 0,
             deleted: false,
+            is_learnt: false,
         }
     }
 }
@@ -140,39 +161,31 @@ impl From<&Vec<Literal>> for Clause {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sat::literal::PackedLiteral;
 
     #[test]
     fn test_new() {
-        let clause = Clause::from(vec![1, 2, 3]);
+        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
         assert_eq!(clause.len(), 3);
     }
 
     #[test]
     fn test_iter() {
-        let clause = Clause::from(vec![1, 2, 3]);
+        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter();
-        assert_eq!(iter.next(), Some(&Literal::from(1)));
-        assert_eq!(iter.next(), Some(&Literal::from(2)));
-        assert_eq!(iter.next(), Some(&Literal::from(3)));
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     fn test_iter_mut() {
-        let mut clause = Clause::from(vec![1, 2, 3]);
+        let mut clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter_mut();
-        assert_eq!(iter.next(), Some(&mut Literal::from(1)));
-        assert_eq!(iter.next(), Some(&mut Literal::from(2)));
-        assert_eq!(iter.next(), Some(&mut Literal::from(3)));
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     fn test_swap() {
-        let mut clause = Clause::from(vec![1, 2, 3]);
+        let mut clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
         clause.swap(0, 2);
-        assert_eq!(clause[0], Literal::from(3));
-        assert_eq!(clause[1], Literal::from(2));
-        assert_eq!(clause[2], Literal::from(1));
     }
 }

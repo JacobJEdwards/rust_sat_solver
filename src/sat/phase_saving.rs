@@ -1,3 +1,4 @@
+use crate::sat::literal::Variable;
 use rand::random;
 use std::ops::{Index, IndexMut};
 
@@ -9,14 +10,8 @@ impl SavedPhases {
         Self(vec![None; n])
     }
 
-    pub(crate) fn save(&mut self, i: usize, b: bool) {
-        self[i] = Some(b);
-    }
-
-    pub(crate) fn flip_all(&mut self) {
-        for i in 1..self.0.len() {
-            self[i] = self[i].map(|b| !b);
-        }
+    pub(crate) fn save(&mut self, i: Variable, b: bool) {
+        self[i as usize] = Some(b);
     }
 
     pub(crate) fn reset(&mut self) {
@@ -25,11 +20,11 @@ impl SavedPhases {
         }
     }
 
-    pub(crate) fn get_next(&self, i: usize) -> bool {
+    pub(crate) fn get_next(&self, i: Variable) -> bool {
         if random::<f64>() < 0.1 {
-            !self.0[i].unwrap_or(true)
+            !self.0[i as usize].unwrap_or(true)
         } else {
-            self.0[i].unwrap_or(true)
+            self.0[i as usize].unwrap_or(true)
         }
     }
 }

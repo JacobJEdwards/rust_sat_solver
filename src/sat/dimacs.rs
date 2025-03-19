@@ -3,19 +3,21 @@
 use std::io::{self, BufRead};
 
 use crate::sat::cnf::Cnf;
+use crate::sat::literal::Literal;
+
 
 // panics docs
 
 /// Parses a DIMACS file into a CNF.
 /// # Panics
 /// if the file is not in DIMACS format.
-pub fn parse_dimacs<R: BufRead>(reader: R) -> Cnf {
+pub fn parse_dimacs<R: BufRead, L: Literal>(reader: R) -> Cnf<L> {
     let mut lines = reader.lines().map(|l| l.unwrap());
 
     let mut clauses = Vec::new();
 
     for line in &mut lines {
-        let mut parts = line.split_whitespace();
+        let parts = line.split_whitespace();
 
         match parts.clone().peekable().peek() {
             Some(&"p" | &"c") => continue,
@@ -36,7 +38,7 @@ pub fn parse_dimacs<R: BufRead>(reader: R) -> Cnf {
 /// Parses a DIMACS file into a CNF.
 /// # Errors
 /// if the file cannot be read.
-pub fn parse_file(file: &str) -> io::Result<Cnf> {
+pub fn parse_file<T: Literal>(file: &str) -> io::Result<Cnf<T>> {
     let file = std::fs::File::open(file)?;
     let reader = io::BufReader::new(file);
     Ok(parse_dimacs(reader))

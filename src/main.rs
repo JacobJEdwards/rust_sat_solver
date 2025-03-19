@@ -1,11 +1,13 @@
-use crate::sat::assignment::HashMapAssignment;
 use crate::sat::assignment::VecAssignment;
+use crate::sat::cdcl::Cdcl;
 use crate::sat::dimacs::parse_file;
+use crate::sat::preprocessing::{
+    PureLiteralElimination, SubsumptionElimination, TautologyElimination,
+};
 use crate::sat::solver::Solver;
-use crate::sat::cdcl::State;
-use crate::sat::variable_selection::RandomOrder;
-use crate::sudoku::solver::{Board, Sudoku, EXAMPLE_NINE};
-use std::hint::black_box;
+use crate::sat::variable_selection::Vsids;
+use crate::sat::literal::{Literal, DoubleLiteral};
+use crate::sat::restarter::Luby;
 
 mod nonogram;
 mod sat;
@@ -31,8 +33,8 @@ fn main() {
 
     for i in 1..100 {
         let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        let cnf = parse_file(&file).unwrap();
-        let mut state: State = State::new(cnf.clone());
+        let cnf = parse_file::<DoubleLiteral>(&file).unwrap();
+        let mut state: Cdcl<VecAssignment, Vsids, Luby, DoubleLiteral> = Cdcl::new(cnf.clone());
         let sol = state.solve();
 
         println!("{:?}", file);
@@ -53,9 +55,12 @@ fn main() {
     for i in 1..30 {
         let file = format!("data/uf20-91/uf20-0{}.cnf", i);
         let cnf = parse_file(&file).unwrap();
-        let mut state: State<VecAssignment, RandomOrder> = Solver::new(cnf.clone());
+        let mut state: Cdcl<VecAssignment, Vsids> = Solver::new(cnf.clone());
 
-        // state.add_preprocessor(TautologyElimination).add_preprocessor(SubsumptionElimination);
+        state
+            .add_preprocessor(TautologyElimination)
+            .add_preprocessor(SubsumptionElimination)
+            .add_preprocessor(PureLiteralElimination);
 
         let time = std::time::Instant::now();
         let sol = state.solve();

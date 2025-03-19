@@ -1,6 +1,7 @@
 use crate::sat::cnf::Cnf;
 use std::cmp::max;
 use std::fmt::Display;
+use crate::sat::literal::PackedLiteral;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Cell {
@@ -59,7 +60,7 @@ impl Nonogram {
         solution
     }
 
-    pub fn to_cnf(&self) -> Cnf {
+    pub fn to_cnf(&self) -> Cnf<PackedLiteral> {
         let cell_clauses = generate_cell_clauses(self.clone());
         let cell_unique_clauses = generate_cell_unique_clauses(self.clone());
 

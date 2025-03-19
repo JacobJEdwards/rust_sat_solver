@@ -2,8 +2,7 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::Literal;
-use std::cmp::min;
+use crate::sat::literal::{Literal};
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
@@ -11,42 +10,43 @@ pub enum Reason {
     #[default]
     Decision,
     Unit(usize),
-    Long(usize),
+    Clause(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Step {
-    pub lit: Literal,
+pub struct Step<L: Literal> {
+    pub lit: L,
     pub decision_level: usize,
     pub reason: Reason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Trail {
-    t: Vec<Step>,
+pub struct Trail<L: Literal> {
+    t: Vec<Step<L>>,
     pub curr_idx: usize,
     pub lit_to_level: Vec<usize>,
     pub lit_to_pos: Vec<usize>,
 }
 
-impl Index<usize> for Trail {
-    type Output = Step;
+impl <L: Literal> Index<usize> for Trail<L> {
+    type Output = Step<L>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.t[index]
     }
 }
 
-impl IndexMut<usize> for Trail {
+impl <L: Literal> IndexMut<usize> for Trail<L> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.t[index]
     }
 }
 
-impl Trail {
+impl <L: Literal> Trail<L> {
     #[must_use]
     pub fn decision_level(&self) -> usize {
-        let index = min(self.curr_idx, self.t.len() - 1);
+        // let index = min(self.curr_idx, self.t.len() - 1);
+        let index = self.curr_idx - 1;
         self.t[index].decision_level
     }
 
@@ -60,12 +60,12 @@ impl Trail {
         self.t.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Step> {
+    pub fn iter(&self) -> impl Iterator<Item = &Step<L>> {
         self.t.iter()
     }
 
     #[must_use]
-    pub fn new(cnf: &Cnf) -> Self {
+    pub fn new(cnf: &Cnf<L>) -> Self {
         let initial: Vec<_> = cnf
             .iter()
             .filter(|c| c.is_unit())
@@ -77,53 +77,46 @@ impl Trail {
             })
             .collect();
 
+        let mut vec = Vec::with_capacity(cnf.num_vars);
+
         let num_vars = cnf.num_vars;
         let mut lit_to_pos = vec![0; num_vars];
         for (i, step) in initial.iter().enumerate() {
-            lit_to_pos[step.lit.variable()] = i;
+            lit_to_pos[step.lit.variable() as usize] = i;
         }
 
+        vec.extend(initial);
+
         Self {
-            t: initial,
+            t: vec,
             curr_idx: 0,
             lit_to_level: vec![0; cnf.num_vars],
             lit_to_pos,
         }
     }
 
-    pub fn push(&mut self, lit: Literal, decision_level: usize, reason: Reason) {
-        let found = self.t.iter().find(|s| s.lit.variable() == lit.variable());
-        
-        if found.is_some() {
+    pub fn push(&mut self, lit: L, decision_level: usize, reason: Reason) {
+        if self.lit_to_pos[lit.variable() as usize] != 0 {
             return;
         }
-        
+
         self.t.push(Step {
             lit,
             decision_level,
             reason,
         });
-        self.lit_to_level[lit.variable()] = decision_level;
-        self.lit_to_pos[lit.variable()] = self.t.len() - 1;
-    }
-
-    pub fn backstep<A: Assignment>(&mut self, a: &mut A) {
-        let mut i = self.t.len() - 1;
-        while self.t[i].reason != Reason::Decision {
-            let lit = self.t[i].lit;
-            a.unassign(lit.variable());
-            i -= 1;
-        }
-        self.curr_idx = i;
-        self.t.truncate(i);
+        self.lit_to_level[lit.variable() as usize] = decision_level;
+        self.lit_to_pos[lit.variable() as usize] = self.t.len() - 1;
     }
 
     pub fn backstep_to<A: Assignment>(&mut self, a: &mut A, level: usize) {
         let mut truncate_at = 0;
 
         for i in (0..self.t.len()).rev() {
-            if self.lit_to_level[self.t[i].lit.variable()] >= level {
+            if self.lit_to_level[self.t[i].lit.variable() as usize] >= level {
                 a.unassign(self.t[i].lit.variable());
+                self.lit_to_level[self.t[i].lit.variable() as usize] = 0;
+                self.lit_to_pos[self.t[i].lit.variable() as usize] = 0;
             } else {
                 truncate_at = i + 1;
                 break;

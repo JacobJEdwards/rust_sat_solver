@@ -1,5 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use crate::sat::literal::Literal;
+use crate::sat::literal::PackedLiteral;
+use crate::sat::literal::Variable;
 use core::ops::{Index, IndexMut};
 use std::collections::HashMap;
 
@@ -56,34 +58,28 @@ impl From<Option<bool>> for VarState {
 pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output = VarState> {
     fn new(n: usize) -> Self;
 
-    fn set(&mut self, lit: usize, b: bool);
+    fn set(&mut self, var: Variable, b: bool);
 
-    fn assign(&mut self, l: Literal) {
+    fn assign(&mut self, l: impl Literal) {
         self.set(l.variable(), l.polarity());
     }
 
-    fn unassign(&mut self, i: usize);
+    fn unassign(&mut self, i: Variable);
 
     fn get_solutions(&self) -> Solutions;
 
-    fn is_assigned(&self, i: usize) -> bool {
-        self[i].is_assigned()
+    fn is_assigned(&self, i: Variable) -> bool {
+        self[i as usize].is_assigned()
     }
 
-    fn var_value(&self, i: usize) -> Option<bool> {
-        self[i].into()
+    fn var_value(&self, i: Variable) -> Option<bool> {
+        self[i as usize].into()
     }
 
     fn all_assigned(&self) -> bool;
 
-    fn literal_value(&self, l: Literal) -> Option<bool> {
+    fn literal_value(&self, l: impl Literal) -> Option<bool> {
         self.var_value(l.variable()).map(|b| b ^ l.is_negated())
-    }
-
-    fn len(&self) -> usize;
-
-    fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }
 
@@ -123,7 +119,7 @@ impl IndexMut<usize> for Solutions {
 
 impl Solutions {
     #[must_use]
-    pub fn new(s: Vec<i32>) -> Self {
+    pub fn new(s: &[i32]) -> Self {
         Self(s.iter().filter(|i| **i != 0).copied().collect())
     }
 
@@ -165,40 +161,40 @@ impl Assignment for VecAssignment {
         Self(vec![VarState::Unassigned; n])
     }
 
-    fn set(&mut self, lit: usize, b: bool) {
-        self[lit] = VarState::Assigned(b);
+    fn set(&mut self, var: Variable, b: bool) {
+        self[var as usize] = VarState::Assigned(b);
     }
 
-    fn unassign(&mut self, i: usize) {
-        self[i] = VarState::Unassigned;
+    fn unassign(&mut self, i: Variable) {
+        self[i as usize] = VarState::Unassigned;
     }
 
     fn get_solutions(&self) -> Solutions {
         Solutions::new(
-            self.0
+            &self
+                .0
                 .iter()
                 .enumerate()
-                .filter_map(|(i, s)| match s {
-                    VarState::Assigned(true) => Some(i as i32),
-                    VarState::Assigned(false) => Some(-(i as i32)),
-                    _ => None,
+                .filter_map(|(i, s)| {
+                    let i = i32::try_from(i).ok()?;
+                    match s {
+                        VarState::Assigned(true) => Some(i),
+                        VarState::Assigned(false) => Some(-i),
+                        _ => None,
+                    }
                 })
-                .collect(),
+                .collect::<Vec<_>>(),
         )
     }
 
     fn all_assigned(&self) -> bool {
         self.0.iter().all(|s| s.is_assigned())
     }
-
-    fn len(&self) -> usize {
-        self.0.len()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HashMapAssignment {
-    map: HashMap<usize, VarState>,
+    map: HashMap<Variable, VarState>,
     num_vars: usize,
 }
 
@@ -206,12 +202,14 @@ impl Index<usize> for HashMapAssignment {
     type Output = VarState;
 
     fn index(&self, index: usize) -> &Self::Output {
+        let index = Variable::try_from(index).expect("Index overflow");
         self.map.get(&index).unwrap_or(&VarState::Unassigned)
     }
 }
 
 impl IndexMut<usize> for HashMapAssignment {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let index = Variable::try_from(index).expect("Index overflow");
         self.map.entry(index).or_insert(VarState::Unassigned)
     }
 }
@@ -224,37 +222,38 @@ impl Assignment for HashMapAssignment {
         }
     }
 
-    fn set(&mut self, lit: usize, b: bool) {
-        self.map.insert(lit, VarState::Assigned(b));
+    fn set(&mut self, var: Variable, b: bool) {
+        self.map.insert(var, VarState::Assigned(b));
     }
 
-    fn unassign(&mut self, i: usize) {
+    fn unassign(&mut self, i: Variable) {
         self.map.remove(&i);
     }
 
     fn get_solutions(&self) -> Solutions {
         Solutions::new(
-            self.map
+            &self
+                .map
                 .iter()
-                .filter_map(|(i, s)| match s {
-                    VarState::Assigned(true) => Some(*i as i32),
-                    VarState::Assigned(false) => Some(-(*i as i32)),
-                    _ => None,
+                .filter_map(|(i, s)| {
+                    let i = i32::try_from(*i).ok()?;
+
+                    match s {
+                        VarState::Assigned(true) => Some(i),
+                        VarState::Assigned(false) => Some(-i),
+                        _ => None,
+                    }
                 })
-                .collect(),
+                .collect::<Vec<_>>(),
         )
     }
 
-    fn is_assigned(&self, i: usize) -> bool {
+    fn is_assigned(&self, i: Variable) -> bool {
         self.map.contains_key(&i)
     }
 
     fn all_assigned(&self) -> bool {
         self.map.len() == self.num_vars && self.map.values().all(|s| s.is_assigned())
-    }
-
-    fn len(&self) -> usize {
-        self.map.len()
     }
 }
 
@@ -295,9 +294,9 @@ mod tests {
         assert_eq!(a.var_value(2), Some(false));
         assert_eq!(a.var_value(3), Some(true));
 
-        assert_eq!(a.literal_value(Literal::new(1, false)), Some(false));
-        assert_eq!(a.literal_value(Literal::new(2, true)), Some(false));
-        assert_eq!(a.literal_value(Literal::new(3, false)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(1, false)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(2, true)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(3, false)), Some(false));
 
         a.unassign(1);
         assert!(!a.is_assigned(1));
@@ -305,7 +304,7 @@ mod tests {
 
         let s = a.get_solutions();
 
-        assert_eq!(s, Solutions::new(vec![3]));
+        assert_eq!(s, Solutions::new(&[3]));
     }
 
     #[test]
@@ -323,9 +322,9 @@ mod tests {
         assert_eq!(a.var_value(2), Some(false));
         assert_eq!(a.var_value(3), Some(true));
 
-        assert_eq!(a.literal_value(Literal::new(1, false)), Some(false));
-        assert_eq!(a.literal_value(Literal::new(2, true)), Some(false));
-        assert_eq!(a.literal_value(Literal::new(3, false)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(1, false)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(2, true)), Some(false));
+        assert_eq!(a.literal_value(PackedLiteral::new(3, false)), Some(false));
 
         a.unassign(1);
         assert!(!a.is_assigned(1));
@@ -333,7 +332,7 @@ mod tests {
 
         let s = a.get_solutions();
 
-        assert_eq!(s, Solutions::new(vec![3]));
+        assert_eq!(s, Solutions::new(&[3]));
     }
 
     #[test]

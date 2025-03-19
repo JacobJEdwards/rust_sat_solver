@@ -1,7 +1,10 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+
+use crate::sat::literal::Variable;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Expr {
-    Var(usize),
+    Var(Variable),
     Not(Box<Expr>),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
@@ -59,7 +62,7 @@ impl Expr {
     }
 
     #[must_use]
-    pub fn unwrap_var(&self) -> usize {
+    pub fn unwrap_var(&self) -> Variable {
         match self {
             Self::Var(i) => *i,
             _ => panic!("Not a variable"),
@@ -87,8 +90,8 @@ impl From<bool> for Expr {
     }
 }
 
-impl From<usize> for Expr {
-    fn from(i: usize) -> Self {
+impl From<Variable> for Expr {
+    fn from(i: Variable) -> Self {
         Self::Var(i)
     }
 }
@@ -96,9 +99,9 @@ impl From<usize> for Expr {
 impl From<i32> for Expr {
     fn from(i: i32) -> Self {
         if i < 0 {
-            Self::Not(Box::new(Self::Var(i.unsigned_abs() as usize)))
+            Self::Not(Box::new(Self::Var(i.unsigned_abs())))
         } else {
-            Self::Var(i.unsigned_abs() as usize)
+            Self::Var(i.unsigned_abs())
         }
     }
 }

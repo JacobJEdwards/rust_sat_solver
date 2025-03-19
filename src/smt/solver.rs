@@ -1,9 +1,10 @@
 use crate::sat::assignment::{Solutions, VecAssignment};
+use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
 use crate::sat::solver::Solver;
-use crate::sat::cdcl::State;
 use std::collections::HashMap;
+use crate::sat::literal::PackedLiteral;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -14,7 +15,7 @@ pub enum TheoryConstraint {
 
 #[derive(Debug)]
 pub struct SmtSolver {
-    cnf: Cnf,
+    cnf: Cnf<PackedLiteral>,
     theory_constraints: Vec<TheoryConstraint>,
     var_mappings: HashMap<(String, i32), i32>,
     // Track actual variable values for theory solving
@@ -91,7 +92,7 @@ impl SmtSolver {
                 return false;
             }
 
-            let mut solver: State<VecAssignment> = Solver::new(self.cnf.clone());
+            let mut solver: Cdcl<VecAssignment> = Solver::new(self.cnf.clone());
             let solution = solver.solve();
 
             if let Some(model) = solution {

@@ -1,4 +1,6 @@
+use crate::sat::literal::PackedLiteral;
 use crate::sat;
+use crate::sat::cnf::Cnf;
 use crate::sat::assignment::Solutions;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -420,7 +422,7 @@ impl Sudoku {
     }
 
     #[must_use]
-    pub fn to_cnf(&self) -> sat::cnf::Cnf {
+    pub fn to_cnf(&self) -> Cnf<PackedLiteral> {
         let size = self.size as usize;
         let block_size = self.size.block_size();
 
