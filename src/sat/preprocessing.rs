@@ -1,6 +1,6 @@
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::{Literal};
+use crate::sat::literal::Literal;
 use std::collections::HashSet;
 
 pub trait Preprocessor {
@@ -43,7 +43,7 @@ impl PreprocessorChain {
     }
 }
 
-impl <T: Preprocessor> PreprocessorChain<T> {
+impl<T: Preprocessor> PreprocessorChain<T> {
     pub fn add_preprocessor<P: Preprocessor>(
         self,
         preprocessor: P,

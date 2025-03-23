@@ -5,7 +5,6 @@ use std::io::{self, BufRead};
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 
-
 // panics docs
 
 /// Parses a DIMACS file into a CNF.

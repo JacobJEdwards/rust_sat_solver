@@ -1,7 +1,7 @@
-use crate::sat::literal::PackedLiteral;
 use crate::sat;
-use crate::sat::cnf::Cnf;
 use crate::sat::assignment::Solutions;
+use crate::sat::cnf::Cnf;
+use crate::sat::literal::PackedLiteral;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board(Vec<Vec<usize>>);

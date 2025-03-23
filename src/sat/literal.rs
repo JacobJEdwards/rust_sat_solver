@@ -9,7 +9,7 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
     fn new(var: Variable, polarity: bool) -> Self;
     fn variable(self) -> Variable;
     fn polarity(self) -> bool;
-    
+
     #[must_use]
     fn negated(self) -> Self;
 
@@ -50,38 +50,6 @@ impl Literal for PackedLiteral {
     }
 }
 
-impl Neg for PackedLiteral {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for PackedLiteral {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Neg for &PackedLiteral {
-    type Output = PackedLiteral;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for &PackedLiteral {
-    type Output = PackedLiteral;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct StructLiteral {
     value: u32,
@@ -90,12 +58,15 @@ pub struct StructLiteral {
 
 impl Literal for StructLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
-        Self { value: var, polarity }
+        Self {
+            value: var,
+            polarity,
+        }
     }
     fn variable(self) -> Variable {
         self.value
     }
-    
+
     fn polarity(self) -> bool {
         self.polarity
     }
@@ -108,39 +79,6 @@ impl Literal for StructLiteral {
         }
     }
 }
-
-impl Neg for StructLiteral {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for StructLiteral {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Neg for &StructLiteral {
-    type Output = StructLiteral;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for &StructLiteral {
-    type Output = StructLiteral;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DoubleLiteral(u32);
 
@@ -207,10 +145,12 @@ pub struct NegativeLiteral(i32);
 
 impl Literal for NegativeLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
+        let var = i32::try_from(var).expect("negative literal variable overflowed");
+
         if polarity {
-            Self(var as i32)
+            Self(var)
         } else {
-            Self(-(var as i32))
+            Self(-var)
         }
     }
 
@@ -227,54 +167,19 @@ impl Literal for NegativeLiteral {
     }
 }
 
-impl Neg for NegativeLiteral {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for NegativeLiteral {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Neg for &NegativeLiteral {
-    type Output = NegativeLiteral;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for &NegativeLiteral {
-    type Output = NegativeLiteral;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_literal_neg() {
-        assert_eq!(-PackedLiteral::new(1, false), PackedLiteral::new(1, true));
-        assert_eq!(-PackedLiteral::new(1, true), PackedLiteral::new(1, false));
-    }
-
-    #[test]
-    fn test_literal_not() {
-        assert_eq!(!PackedLiteral::new(1, false), PackedLiteral::new(1, true));
-        assert_eq!(!PackedLiteral::new(1, true), PackedLiteral::new(1, false));
+        assert_eq!(
+            PackedLiteral::new(1, false).negated(),
+            PackedLiteral::new(1, true)
+        );
+        assert_eq!(
+            PackedLiteral::new(1, true).negated(),
+            PackedLiteral::new(1, false)
+        );
     }
 }

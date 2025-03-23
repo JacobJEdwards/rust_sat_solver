@@ -1,9 +1,10 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use crate::sat::literal::Literal;
-use crate::sat::literal::PackedLiteral;
-use crate::sat::literal::Variable;
+use crate::sat::literal::{Literal, Variable};
 use core::ops::{Index, IndexMut};
+use itertools::Itertools;
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default, Hash, PartialOrd, Ord)]
 pub enum VarState {
@@ -69,7 +70,7 @@ pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output =
     fn get_solutions(&self) -> Solutions;
 
     fn is_assigned(&self, i: Variable) -> bool {
-        self[i as usize].is_assigned()
+        self[i.try_into().unwrap_or(0)].is_assigned()
     }
 
     fn var_value(&self, i: Variable) -> Option<bool> {
@@ -183,7 +184,7 @@ impl Assignment for VecAssignment {
                         _ => None,
                     }
                 })
-                .collect::<Vec<_>>(),
+                .collect_vec(),
         )
     }
 
@@ -202,15 +203,17 @@ impl Index<usize> for HashMapAssignment {
     type Output = VarState;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let index = Variable::try_from(index).expect("Index overflow");
-        self.map.get(&index).unwrap_or(&VarState::Unassigned)
+        self.map
+            .get(&(index as Variable))
+            .unwrap_or(&VarState::Unassigned)
     }
 }
 
 impl IndexMut<usize> for HashMapAssignment {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let index = Variable::try_from(index).expect("Index overflow");
-        self.map.entry(index).or_insert(VarState::Unassigned)
+        self.map
+            .entry(index as Variable)
+            .or_insert(VarState::Unassigned)
     }
 }
 
@@ -235,16 +238,15 @@ impl Assignment for HashMapAssignment {
             &self
                 .map
                 .iter()
-                .filter_map(|(i, s)| {
-                    let i = i32::try_from(*i).ok()?;
-
+                .filter_map(|(&i, s)| {
+                    let i = i as i32;
                     match s {
                         VarState::Assigned(true) => Some(i),
                         VarState::Assigned(false) => Some(-i),
                         _ => None,
                     }
                 })
-                .collect::<Vec<_>>(),
+                .collect_vec(),
         )
     }
 
@@ -260,6 +262,7 @@ impl Assignment for HashMapAssignment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sat::literal::PackedLiteral;
 
     #[test]
     fn test_var_state() {
@@ -281,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_assignment() {
-        let mut a = VecAssignment::new(3);
+        let mut a: VecAssignment = Assignment::new(3);
         a.set(1, true);
         a.set(2, false);
         a.set(3, true);

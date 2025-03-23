@@ -1,7 +1,7 @@
 use crate::sat::cnf::Cnf;
+use crate::sat::literal::PackedLiteral;
 use std::cmp::max;
 use std::fmt::Display;
-use crate::sat::literal::PackedLiteral;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Cell {

@@ -1,13 +1,13 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use crate::sat::literal::{Literal};
+use crate::sat::literal::{Literal, PackedLiteral};
 use core::ops::{Index, IndexMut};
 use smallvec::SmallVec;
 use std::collections::HashSet;
 use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Clause<T: Literal> {
-    pub literals: SmallVec<[T; 10]>,
+pub struct Clause<L: Literal = PackedLiteral> {
+    pub literals: SmallVec<[L; 10]>,
     pub lbd: u32,
     pub deleted: bool,
     pub is_learnt: bool,
@@ -102,7 +102,7 @@ impl<T: Literal + Hash + Eq> Clause<T> {
     }
 }
 
-impl <T: Literal> Index<usize> for Clause<T> {
+impl<T: Literal> Index<usize> for Clause<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -110,19 +110,19 @@ impl <T: Literal> Index<usize> for Clause<T> {
     }
 }
 
-impl <T: Literal> IndexMut<usize> for Clause<T> {
+impl<T: Literal> IndexMut<usize> for Clause<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.literals[index]
     }
 }
 
-impl <T: Literal >From<&Clause<T>> for Vec<T> {
+impl<T: Literal> From<&Clause<T>> for Vec<T> {
     fn from(clause: &Clause<T>) -> Self {
         clause.literals.to_vec()
     }
 }
 
-impl <T: Literal + Eq + Hash> From<Vec<i32>> for Clause<T> {
+impl<T: Literal + Eq + Hash> From<Vec<i32>> for Clause<T> {
     fn from(literals: Vec<i32>) -> Self {
         let literals = literals
             .into_iter()
@@ -136,7 +136,7 @@ impl <T: Literal + Eq + Hash> From<Vec<i32>> for Clause<T> {
     }
 }
 
-impl <T: Literal> From<Vec<T>> for Clause<T> {
+impl<T: Literal> From<Vec<T>> for Clause<T> {
     fn from(literals: Vec<T>) -> Self {
         Self {
             literals: SmallVec::from(literals),
@@ -147,7 +147,7 @@ impl <T: Literal> From<Vec<T>> for Clause<T> {
     }
 }
 
-impl <T: Literal> From<&Vec<T>> for Clause<T> {
+impl<T: Literal> From<&Vec<T>> for Clause<T> {
     fn from(literals: &Vec<T>) -> Self {
         Self {
             literals: SmallVec::from(literals.clone()),
@@ -161,31 +161,30 @@ impl <T: Literal> From<&Vec<T>> for Clause<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sat::literal::PackedLiteral;
 
     #[test]
     fn test_new() {
-        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
+        let clause: Clause = Clause::from(vec![1, 2, 3]);
         assert_eq!(clause.len(), 3);
     }
 
     #[test]
     fn test_iter() {
-        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
+        let clause: Clause = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter();
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     fn test_iter_mut() {
-        let mut clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
+        let mut clause: Clause = Clause::from(vec![1, 2, 3]);
         let mut iter = clause.iter_mut();
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     fn test_swap() {
-        let mut clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
+        let mut clause: Clause = Clause::from(vec![1, 2, 3]);
         clause.swap(0, 2);
     }
 }

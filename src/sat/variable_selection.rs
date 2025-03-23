@@ -30,8 +30,6 @@ impl IndexMut<usize> for Vsids {
     }
 }
 
-const DEFAULT_DECAY: f64 = 0.95;
-
 impl Vsids {
     pub fn bump(&mut self, i: Variable) {
         self.0[i as usize] += 1.0;
@@ -82,6 +80,7 @@ impl VariableSelection for Vsids {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FixedOrder(usize);
 
 impl VariableSelection for FixedOrder {
@@ -100,6 +99,7 @@ impl VariableSelection for FixedOrder {
     fn decay(&mut self, _: f64) {}
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RandomOrder(usize);
 
 impl VariableSelection for RandomOrder {

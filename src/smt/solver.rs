@@ -2,9 +2,9 @@ use crate::sat::assignment::{Solutions, VecAssignment};
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
+use crate::sat::literal::PackedLiteral;
 use crate::sat::solver::Solver;
 use std::collections::HashMap;
-use crate::sat::literal::PackedLiteral;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -92,23 +92,20 @@ impl SmtSolver {
                 return false;
             }
 
-            let mut solver: Cdcl<VecAssignment> = Solver::new(self.cnf.clone());
+            let mut solver: Cdcl = Solver::new(self.cnf.clone());
             let solution = solver.solve();
 
             if let Some(model) = solution {
-                // Update our variable values based on the model
                 self.update_var_values(&model);
 
                 if self.check_theory() {
                     println!("Found satisfying assignment: {:?}", self.var_values);
                     return true;
                 }
-                // Generate a conflict clause based on the violated constraints
                 let conflict = self.generate_theory_conflict();
-                println!("Theory conflict: {:?}", conflict);
+                println!("Theory conflict: {conflict:?}");
 
                 if conflict.is_empty() {
-                    // If we can't generate a meaningful conflict, the problem is unsatisfiable
                     return false;
                 }
 
@@ -120,9 +117,7 @@ impl SmtSolver {
         }
     }
 
-    // Update variable values based on the SAT model
     fn update_var_values(&mut self, model: &Solutions) {
-        // First collect all constraints for each variable
         let mut var_constraints: HashMap<String, Vec<(&TheoryConstraint, bool)>> = HashMap::new();
 
         for ((var_name, value), lit) in &self.var_mappings {
@@ -153,49 +148,38 @@ impl SmtSolver {
             }
         }
 
-        // Now process all constraints for each variable
         for (var_name, constraints) in var_constraints {
             let mut lower_bound = i32::MIN;
             let mut upper_bound = i32::MAX;
             let mut eq_values = Vec::new();
 
-            // Process bounds
             for (constraint, is_true) in constraints {
                 match constraint {
                     TheoryConstraint::Leq(_, val) => {
                         if is_true {
-                            // x <= val is true
                             upper_bound = upper_bound.min(*val);
                         } else {
-                            // x <= val is false, so x > val
                             lower_bound = lower_bound.max(*val - 1);
                         }
                     }
                     TheoryConstraint::Geq(_, val) => {
                         if is_true {
-                            // x >= val is true
                             lower_bound = lower_bound.max(*val);
                         } else {
-                            // x >= val is false, so x < val
                             upper_bound = upper_bound.min(*val + 1);
                         }
                     }
                     TheoryConstraint::Eq(_, val) => {
                         if is_true {
-                            // x == val is true
                             eq_values.push(*val);
                         } else {
-                            // x == val is false
-                            // We need to exclude this value
                         }
                     }
                 }
             }
 
-            // Determine final value based on bounds and equality constraints
             let mut final_value = None;
 
-            // First check equalities
             for val in eq_values {
                 if val >= lower_bound && val <= upper_bound {
                     final_value = Some(val);
@@ -203,18 +187,14 @@ impl SmtSolver {
                 }
             }
 
-            // If no equality matched, pick a value in the range
             if final_value.is_none() {
                 if lower_bound <= upper_bound {
-                    final_value = Some(lower_bound); // Choose smallest valid value
+                    final_value = Some(lower_bound);
                 } else {
-                    // This is a conflict - we'll let the conflict generation handle it
-                    // For now, just pick a value
                     final_value = Some(lower_bound);
                 }
             }
 
-            // Update the variable
             if let Some(val) = final_value {
                 self.var_values.insert(var_name, val);
             }
@@ -240,17 +220,13 @@ impl SmtSolver {
         None
     }
 
-    // Check if the current variable values satisfy all theory constraints
     pub fn check_theory(&self) -> bool {
         for constraint in &self.theory_constraints {
             match constraint {
                 TheoryConstraint::Leq(var, val) => {
                     if let Some(&var_val) = self.var_values.get(var) {
                         if var_val > *val {
-                            println!(
-                                "Constraint violated: {} <= {} (actual: {})",
-                                var, val, var_val
-                            );
+                            println!("Constraint violated: {var} <= {val} (actual: {var_val})",);
                             return false;
                         }
                     }
@@ -283,12 +259,10 @@ impl SmtSolver {
         true
     }
 
-    // Generate a conflict clause based on violated constraints
     pub fn generate_theory_conflict(&self) -> Vec<i32> {
         let mut conflict_lits = Vec::new();
         let mut violated_constraints = Vec::new();
 
-        // First, collect all violated constraints
         for constraint in &self.theory_constraints {
             match constraint {
                 TheoryConstraint::Leq(var, val) => {
@@ -315,7 +289,6 @@ impl SmtSolver {
             }
         }
 
-        // Generate conflict based on violated constraints
         for constraint in violated_constraints {
             match constraint {
                 TheoryConstraint::Leq(var, val) => {
@@ -336,11 +309,8 @@ impl SmtSolver {
             }
         }
 
-        // If no specific conflicts, create a general conflict
         if conflict_lits.is_empty() && !self.var_mappings.is_empty() {
-            // Choose a subset of assignments to exclude
             for ((var, _), lit) in self.var_mappings.iter().take(3) {
-                // Limit to prevent huge clauses
                 if self.var_values.contains_key(var) {
                     conflict_lits.push(-lit);
                 }

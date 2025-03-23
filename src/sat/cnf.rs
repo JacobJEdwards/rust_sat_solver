@@ -8,12 +8,12 @@ use std::ops::{Index, IndexMut};
 pub type DecisionLevel = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Cnf<T: Literal> {
-    pub clauses: Vec<Clause<T>>,
+pub struct Cnf<L: Literal = PackedLiteral> {
+    pub clauses: Vec<Clause<L>>,
     pub num_vars: usize,
 }
 
-impl <T: Literal> Index<usize> for Cnf<T> {
+impl<T: Literal> Index<usize> for Cnf<T> {
     type Output = Clause<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -21,13 +21,13 @@ impl <T: Literal> Index<usize> for Cnf<T> {
     }
 }
 
-impl <T: Literal> IndexMut<usize> for Cnf<T> {
+impl<T: Literal> IndexMut<usize> for Cnf<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.clauses[index]
     }
 }
 
-impl <T: Literal> Cnf<T> {
+impl<T: Literal> Cnf<T> {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
         let clauses: Vec<_> = clauses
             .into_iter()
@@ -101,7 +101,7 @@ impl <T: Literal> Cnf<T> {
     }
 }
 
-impl <L: Literal> FromIterator<Clause<L>> for Cnf<L> {
+impl<L: Literal> FromIterator<Clause<L>> for Cnf<L> {
     fn from_iter<T: IntoIterator<Item = Clause<L>>>(iter: T) -> Self {
         let mut cnf = Self::default();
         for clause in iter {
@@ -171,13 +171,13 @@ fn to_expr_literal<T: Literal>(literal: T) -> Expr {
     }
 }
 
-impl <T: Literal> From<Expr> for Cnf<T> {
+impl<T: Literal> From<Expr> for Cnf<T> {
     fn from(expr: Expr) -> Self {
         to_cnf(&expr)
     }
 }
 
-impl <T: Literal> TryFrom<Cnf<T>> for Expr {
+impl<T: Literal> TryFrom<Cnf<T>> for Expr {
     type Error = &'static str;
 
     fn try_from(cnf: Cnf<T>) -> Result<Self, Self::Error> {
@@ -201,13 +201,13 @@ mod tests {
             Box::new(Expr::Var(1)),
             Box::new(Expr::And(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))),
         );
-        let cnf: Cnf<PackedLiteral> = to_cnf(&expr);
+        let cnf: Cnf = to_cnf(&expr);
         assert_eq!(cnf.len(), 2);
     }
 
     #[test]
     fn test_to_expr() {
-        let clause: Clause<PackedLiteral> = Clause::from(vec![1, 2, 3]);
+        let clause: Clause = Clause::from(vec![1, 2, 3]);
         let expr = to_expr(&clause);
         assert_eq!(
             expr,

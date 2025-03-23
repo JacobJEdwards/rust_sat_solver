@@ -1,26 +1,33 @@
+use crate::sat::literal::Literal;
 use crate::sat::literal::Variable;
 use rand::random;
-use std::ops::{Index, IndexMut};
+
+pub trait PhaseSelector {
+    fn new(n: usize) -> Self;
+    fn save(&mut self, lit: impl Literal);
+    fn reset(&mut self);
+    fn get_next(&self, var: Variable) -> bool;
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SavedPhases(Vec<Option<bool>>);
 
-impl SavedPhases {
-    pub(crate) fn new(n: usize) -> Self {
+impl PhaseSelector for SavedPhases {
+    fn new(n: usize) -> Self {
         Self(vec![None; n])
     }
 
-    pub(crate) fn save(&mut self, i: Variable, b: bool) {
-        self[i as usize] = Some(b);
+    fn save(&mut self, lit: impl Literal) {
+        self.0[lit.variable() as usize] = Some(lit.polarity());
     }
 
-    pub(crate) fn reset(&mut self) {
+    fn reset(&mut self) {
         for i in 1..self.0.len() {
-            self[i] = None;
+            self.0[i] = None;
         }
     }
 
-    pub(crate) fn get_next(&self, i: Variable) -> bool {
+    fn get_next(&self, i: Variable) -> bool {
         if random::<f64>() < 0.1 {
             !self.0[i as usize].unwrap_or(true)
         } else {
@@ -29,16 +36,17 @@ impl SavedPhases {
     }
 }
 
-impl Index<usize> for SavedPhases {
-    type Output = Option<bool>;
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct RandomPhases;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+impl PhaseSelector for RandomPhases {
+    fn new(_: usize) -> Self {
+        Self
     }
-}
+    fn save(&mut self, _: impl Literal) {}
 
-impl IndexMut<usize> for SavedPhases {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
+    fn reset(&mut self) {}
+    fn get_next(&self, _: Variable) -> bool {
+        random::<bool>()
     }
 }

@@ -19,16 +19,16 @@ pub struct Analyser<T: Literal> {
     seen: Vec<bool>,
     path_c: usize,
     to_bump: Vec<Variable>,
-    data: std::marker::PhantomData<T>
+    data: std::marker::PhantomData<T>,
 }
 
-impl <T: Literal> Analyser <T> {
+impl<T: Literal> Analyser<T> {
     fn new(num_vars: usize) -> Self {
         Self {
             seen: vec![false; num_vars],
             path_c: 0,
             to_bump: Vec::new(),
-            data: std::marker::PhantomData
+            data: std::marker::PhantomData,
         }
     }
 
@@ -107,14 +107,7 @@ impl <T: Literal> Analyser <T> {
             self.resolve(clause, &ante, assignment, idx, c_idx, trail);
         }
 
-        #[cfg(debug_assertions)]
-        for lit in clause.iter() {
-            assert_eq!(
-                assignment.literal_value(*lit),
-                Some(false),
-                "Learned clause contains non-falsified literal: {lit:?}"
-            );
-        }
+        debug_assert!(clause.iter().all(|lit| assignment.literal_value(*lit) == Some(false)));
 
         if clause.is_empty() {
             (Conflict::Ground, self.to_bump.clone())

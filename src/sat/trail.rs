@@ -2,8 +2,9 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::{Literal};
+use crate::sat::literal::Literal;
 use std::ops::{Index, IndexMut};
+use itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
 pub enum Reason {
@@ -28,7 +29,7 @@ pub struct Trail<L: Literal> {
     pub lit_to_pos: Vec<usize>,
 }
 
-impl <L: Literal> Index<usize> for Trail<L> {
+impl<L: Literal> Index<usize> for Trail<L> {
     type Output = Step<L>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -36,16 +37,18 @@ impl <L: Literal> Index<usize> for Trail<L> {
     }
 }
 
-impl <L: Literal> IndexMut<usize> for Trail<L> {
+impl<L: Literal> IndexMut<usize> for Trail<L> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.t[index]
     }
 }
 
-impl <L: Literal> Trail<L> {
+impl<L: Literal> Trail<L> {
     #[must_use]
     pub fn decision_level(&self) -> usize {
-        // let index = min(self.curr_idx, self.t.len() - 1);
+        if self.curr_idx == 0 {
+            return 0;
+        }
         let index = self.curr_idx - 1;
         self.t[index].decision_level
     }
@@ -66,7 +69,7 @@ impl <L: Literal> Trail<L> {
 
     #[must_use]
     pub fn new(cnf: &Cnf<L>) -> Self {
-        let initial: Vec<_> = cnf
+        let initial = cnf
             .iter()
             .filter(|c| c.is_unit())
             .enumerate()
@@ -75,7 +78,7 @@ impl <L: Literal> Trail<L> {
                 decision_level: 0,
                 reason: Reason::Unit(i),
             })
-            .collect();
+            .collect_vec();
 
         let mut vec = Vec::with_capacity(cnf.num_vars);
 
@@ -113,10 +116,11 @@ impl <L: Literal> Trail<L> {
         let mut truncate_at = 0;
 
         for i in (0..self.t.len()).rev() {
-            if self.lit_to_level[self.t[i].lit.variable() as usize] >= level {
-                a.unassign(self.t[i].lit.variable());
-                self.lit_to_level[self.t[i].lit.variable() as usize] = 0;
-                self.lit_to_pos[self.t[i].lit.variable() as usize] = 0;
+            let var = self.t[i].lit.variable();
+            if self.lit_to_level[var as usize] >= level {
+                a.unassign(var);
+                self.lit_to_level[var as usize] = 0;
+                self.lit_to_pos[var as usize] = 0;
             } else {
                 truncate_at = i + 1;
                 break;

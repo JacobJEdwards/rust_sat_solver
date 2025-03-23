@@ -1,149 +1,47 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
-use std::hash::Hash;
-use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
+use itertools::Itertools;
+use crate::sat::assignment::{Assignment, Solutions};
 use crate::sat::clause::Clause;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{Analyser, Conflict};
-use crate::sat::literal::{Literal, PackedLiteral};
-use crate::sat::phase_saving::SavedPhases;
+use crate::sat::literal::Literal;
+use crate::sat::phase_saving::PhaseSelector;
 use crate::sat::preprocessing::{Preprocessor, PreprocessorChain};
-use crate::sat::restarter::{Luby, Restarter};
-use crate::sat::solver::Solver;
+use crate::sat::propagation::{Propagator};
+use crate::sat::restarter::Restarter;
+use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
 use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
-use crate::sat::variable_selection::{VariableSelection, Vsids};
-use crate::sat::watch::WatchedLiterals;
+use crate::sat::variable_selection::VariableSelection;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cdcl<A: Assignment = VecAssignment, V: VariableSelection = Vsids, R: Restarter = Luby, L: Literal = PackedLiteral> {
-    pub assignment: A,
+pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
+    pub assignment: Config::Assignment,
 
-    pub watched_literals: WatchedLiterals,
+    pub propagator: Config::Propagator,
 
-    pub cnf: Cnf<L>,
+    pub cnf: Cnf<Config::Literal>,
 
-    pub selector: V,
+    pub selector: Config::VariableSelector,
 
-    pub saved_phases: SavedPhases,
+    pub saved_phases: Config::PhaseSelector,
 
     pub decision_level: cnf::DecisionLevel,
 
-    pub trail: Trail<L>,
+    pub trail: Trail<Config::Literal>,
 
     pub preprocessors: PreprocessorChain,
 
-    pub restarter: R,
+    pub restarter: Config::Restarter,
 
     pub non_learnt_clauses_idx: usize,
 
     pub restart_count: usize,
 }
 
-impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal + Eq + Hash> Cdcl<A, V, R, L> {
-    fn find_new_watch(&self, clause_idx: usize) -> Option<usize> {
-        let clause = &self.cnf[clause_idx];
-
-        clause
-            .iter()
-            .skip(2)
-            .position(|&l| self.assignment.literal_value(l) != Some(false))
-            .map(|i| i + 2)
-    }
-
-    fn handle_new_watch(&mut self, clause_idx: usize, new_lit_idx: usize) {
-        assert!(new_lit_idx >= 2);
-
-        let new_lit = self.cnf[clause_idx][new_lit_idx];
-        let prev_lit = self.cnf[clause_idx][1];
-
-        self.cnf[clause_idx].swap(1, new_lit_idx);
-        self.watched_literals[new_lit].push(clause_idx);
-        self.watched_literals[prev_lit].retain(|&mut i| i != clause_idx);
-    }
-
-    fn add_propagation(&mut self, lit: L, clause_idx: usize) {
-        self.trail
-            .push(lit, self.decision_level, Reason::Clause(clause_idx));
-    }
-
-    fn process_clause(&mut self, clause_idx: usize) -> Option<usize> {
-        let clause = &mut self.cnf[clause_idx];
-
-        let first = clause[0];
-        let second = clause[1];
-
-        let first_value = self.assignment.literal_value(first);
-
-        if first_value == Some(true) {
-            return None;
-        }
-
-        let second_value = self.assignment.literal_value(second);
-
-        if second_value == Some(true) {
-            return None;
-        }
-
-        match (first_value, second_value) {
-            (Some(false), Some(false)) => {
-                #[cfg(debug_assertions)]
-                assert!(
-                    clause
-                        .iter()
-                        .all(|&l| self.assignment.literal_value(l) == Some(false)),
-                    "Clause: {clause:?} is not false, Values: {:?}, idx: {clause_idx}, trail: \
-                    {:?}",
-                    clause
-                        .iter()
-                        .map(|&l| self.assignment.literal_value(l))
-                        .collect::<Vec<_>>(),
-                    self.trail,
-                );
-
-                Some(clause_idx)
-            }
-            (None, Some(false)) => {
-                self.handle_false(first, clause_idx);
-                None
-            }
-            (Some(false), None) => {
-                clause.swap(0, 1);
-                self.handle_false(second, clause_idx);
-                None
-            }
-            (Some(true), _) | (_, Some(true)) | (None, None) => !unreachable!(),
-        }
-    }
-
-    fn handle_false(&mut self, other_lit: L, clause_idx: usize) {
-        match self.find_new_watch(clause_idx) {
-            Some(new_lit_idx) => self.handle_new_watch(clause_idx, new_lit_idx),
-            None => self.add_propagation(other_lit, clause_idx),
-        };
-    }
-
-    fn propagate_watch(&mut self, indices: &[usize]) -> Option<usize> {
-        indices.iter().find_map(|&idx| self.process_clause(idx))
-    }
-
-    fn propagate(&mut self) -> Option<usize> {
-        while self.trail.curr_idx < self.trail.len() {
-            let lit = self.trail[self.trail.curr_idx].lit;
-            self.trail.curr_idx += 1;
-            self.assignment.assign(lit);
-
-            let indices = &self.watched_literals[lit].clone();
-
-            if let Some(idx) = self.propagate_watch(indices) {
-                return Some(idx);
-            }
-        }
-
-        None
-    }
-
+impl<Config: SolverConfig> Cdcl<Config> {
     pub fn add_preprocessor<T: Preprocessor>(&self, preprocessor: T) -> &Self {
         self.preprocessors.add_preprocessor(preprocessor);
         self
@@ -158,46 +56,52 @@ impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal + Eq + Hash> 
         self.restarter.should_restart() || conflict_rate > 0.1
     }
 
-    pub fn add_clause(&mut self, clause: Clause<L>) {
+    fn add_propagation(&mut self, lit: Config::Literal, c_ref: usize) {
+        self.trail
+            .push(lit, self.decision_level, Reason::Clause(c_ref));
+    }
+
+    pub fn add_clause(&mut self, clause: Clause<Config::Literal>) {
         if clause.is_empty() || clause.is_tautology() {
             return;
         }
 
         let c_ref = self.cnf.len();
         self.cnf.add_clause(clause);
-        self.watched_literals.add_clause(&self.cnf[c_ref], c_ref);
+        self.propagator.add_clause(&self.cnf[c_ref], c_ref);
 
         #[cfg(debug_assertions)]
         {
+            debug_assert!(!self.cnf[c_ref].iter().any(|l| self.assignment.literal_value(*l) == Some(false)));
             let lit_1 = self.cnf[c_ref][0];
             let lit_2 = self.cnf[c_ref][1];
 
-            assert_ne!(self.assignment.literal_value(lit_1), Some(false));
-            assert_ne!(self.assignment.literal_value(lit_2), Some(false));
+            debug_assert_ne!(self.assignment.literal_value(lit_1), Some(false));
+            debug_assert_ne!(self.assignment.literal_value(lit_2), Some(false));
         }
     }
 }
 
-impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal> Solver<L> for Cdcl<A, V, R, L> {
-    fn new(cnf: Cnf<L>) -> Self {
+impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
+    fn new(cnf: Cnf<Config::Literal>) -> Self {
         let non_learnt_clauses_idx = cnf.len();
-        let wl = WatchedLiterals::new(&cnf);
+        let propagator = Propagator::new(&cnf);
         let vars = cnf
             .clauses
             .iter()
             .flat_map(|c| c.iter().map(|l| l.variable()))
-            .collect::<Vec<_>>();
+            .collect_vec();
 
-        let selector = V::new(cnf.num_vars, &vars);
+        let selector = Config::VariableSelector::new(cnf.num_vars, &vars);
 
         Self {
-            assignment: A::new(cnf.num_vars),
+            assignment: Assignment::new(cnf.num_vars),
             trail: Trail::new(&cnf),
-            watched_literals: wl,
-            saved_phases: SavedPhases::new(cnf.num_vars),
+            propagator,
+            saved_phases: PhaseSelector::new(cnf.num_vars),
             cnf,
             selector,
-            restarter: R::new(),
+            restarter: Restarter::new(),
             decision_level: 0,
             non_learnt_clauses_idx,
             preprocessors: PreprocessorChain::new(),
@@ -218,7 +122,11 @@ impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal> Solver<L> fo
         self.cnf = cnf;
 
         loop {
-            if let Some(c_ref) = self.propagate() {
+            if let Some(c_ref) = self.propagator.propagate(
+                &mut self.trail,
+                &mut self.assignment,
+                &mut self.cnf,
+            ) {
                 let (conflict, to_bump) =
                     Analyser::analyse(&self.cnf, &self.trail, &self.assignment, c_ref);
 
@@ -281,10 +189,10 @@ impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal> Solver<L> fo
 
             let next = self.saved_phases.get_next(lit);
 
-            self.saved_phases.save(lit, next);
+            self.saved_phases.save(Config::Literal::new(lit, next));
 
             self.trail.push(
-                L::new(lit, !next),
+                Literal::new(lit, !next),
                 self.decision_level,
                 Reason::Decision,
             );
@@ -300,6 +208,7 @@ impl<A: Assignment, V: VariableSelection, R: Restarter, L: Literal> Solver<L> fo
 mod tests {
     use super::*;
     use crate::sat::clause::Clause;
+    use crate::sat::literal::PackedLiteral;
 
     fn get_cnf() -> Cnf<PackedLiteral> {
         Cnf {
