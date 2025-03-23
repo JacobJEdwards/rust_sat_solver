@@ -22,7 +22,7 @@ pub trait Propagator<L: Literal, A: Assignment> {
         assignment: &mut A,
         cnf: &mut Cnf<L>,
     ) -> Option<usize>;
-    
+
     fn add_propagation(lit: L, clause_idx: usize, trail: &mut Trail<L>) {
         trail.push(lit, trail.decision_level(), Reason::Clause(clause_idx));
     }
@@ -83,7 +83,6 @@ impl<L: Literal, A: Assignment> Propagator<L, A> for WatchedLiterals<L, A> {
         None
     }
 }
-
 
 impl<L: Literal, A: Assignment> WatchedLiterals<L, A> {
     pub fn propagate_watch(
@@ -236,11 +235,11 @@ impl<L: Literal, A: Assignment> Propagator<L, A> for UnitSearch<L, A> {
             if let Some(idx) = Self::process_cnf(trail, assignment, cnf) {
                 return Some(idx);
             }
-            
+
             if trail.curr_idx == trail.len() {
                 return None;
             }
-            
+
             while trail.curr_idx < trail.len() {
                 let lit = trail[trail.curr_idx].lit;
                 trail.curr_idx += 1;
@@ -256,12 +255,8 @@ enum UnitSearchResult<L: Literal> {
     Continue,
 }
 
-impl <L: Literal, A: Assignment> UnitSearch<L, A> {
-    fn process_cnf(
-        trail: &mut Trail<L>,
-        assignment: &A,
-        cnf: &Cnf<L>,
-    ) -> Option<usize> {
+impl<L: Literal, A: Assignment> UnitSearch<L, A> {
+    fn process_cnf(trail: &mut Trail<L>, assignment: &A, cnf: &Cnf<L>) -> Option<usize> {
         for (idx, clause) in cnf.iter().enumerate() {
             match Self::process_clause(clause, assignment, idx) {
                 UnitSearchResult::Unsat(idx) => return Some(idx),
@@ -271,17 +266,13 @@ impl <L: Literal, A: Assignment> UnitSearch<L, A> {
                 UnitSearchResult::Continue => continue,
             }
         }
-        
+
         None
     }
-    
-    fn process_clause(
-        clause: &Clause<L>,
-        assignment: &A,
-        idx: usize,
-    ) -> UnitSearchResult<L> {
+
+    fn process_clause(clause: &Clause<L>, assignment: &A, idx: usize) -> UnitSearchResult<L> {
         let mut unassigned = None;
-        
+
         for &lit in clause.iter() {
             match assignment.literal_value(lit) {
                 Some(true) => return UnitSearchResult::Continue,
@@ -290,12 +281,14 @@ impl <L: Literal, A: Assignment> UnitSearch<L, A> {
                     if unassigned.is_some() {
                         return UnitSearchResult::Continue;
                     }
-                    
+
                     unassigned = Some(lit);
                 }
             }
         }
-        
-        unassigned.map_or(UnitSearchResult::Unsat(idx), |lit| UnitSearchResult::Unit(lit))
+
+        unassigned.map_or(UnitSearchResult::Unsat(idx), |lit| {
+            UnitSearchResult::Unit(lit)
+        })
     }
 }

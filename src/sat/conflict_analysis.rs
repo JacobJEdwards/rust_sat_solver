@@ -107,7 +107,9 @@ impl<T: Literal> Analyser<T> {
             self.resolve(clause, &ante, assignment, idx, c_idx, trail);
         }
 
-        debug_assert!(clause.iter().all(|lit| assignment.literal_value(*lit) == Some(false)));
+        debug_assert!(clause
+            .iter()
+            .all(|lit| assignment.literal_value(*lit) == Some(false)));
 
         if clause.is_empty() {
             (Conflict::Ground, self.to_bump.clone())

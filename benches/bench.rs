@@ -1,3 +1,4 @@
+use sat_solver::sat::preprocessing::Preprocessor;
 use criterion::{criterion_group, criterion_main, Criterion};
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
@@ -8,6 +9,7 @@ use sat_solver::sat::phase_saving::{PhaseSelector, RandomPhases, SavedPhases};
 use sat_solver::sat::preprocessing::{
     PureLiteralElimination, SubsumptionElimination, TautologyElimination,
 };
+use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Exponential, Geometric, Linear, Luby, Never, Restarter};
 use sat_solver::sat::solver::{Solver, SolverConfig};
 use sat_solver::sat::variable_selection::{FixedOrder, RandomOrder, VariableSelection, Vsids};
@@ -16,12 +18,12 @@ use std::fmt::{Debug, Formatter};
 use std::hint::black_box;
 use std::marker::PhantomData;
 use std::time::Duration;
-use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
+use sat_solver::sat::cnf::Cnf;
 
 #[derive(Debug, Clone)]
 struct AssignmentConfig<A: Assignment>(PhantomData<A>);
 
-impl<A: Assignment + Debug> SolverConfig for AssignmentConfig<A> {
+impl<A: Assignment + Debug + Clone> SolverConfig for AssignmentConfig<A> {
     type Assignment = A;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
@@ -33,7 +35,7 @@ impl<A: Assignment + Debug> SolverConfig for AssignmentConfig<A> {
 #[derive(Debug, Clone)]
 struct SelectorConfig<V: VariableSelection>(PhantomData<V>);
 
-impl<V: VariableSelection + Debug> SolverConfig for SelectorConfig<V> {
+impl<V: VariableSelection + Debug + Clone> SolverConfig for SelectorConfig<V> {
     type Assignment = VecAssignment;
     type VariableSelector = V;
     type Literal = PackedLiteral;
@@ -44,7 +46,7 @@ impl<V: VariableSelection + Debug> SolverConfig for SelectorConfig<V> {
 
 #[derive(Debug, Clone)]
 struct RestarterConfig<R: Restarter>(PhantomData<R>);
-impl<R: Restarter + Debug> SolverConfig for RestarterConfig<R> {
+impl<R: Restarter + Debug + Clone> SolverConfig for RestarterConfig<R> {
     type Assignment = VecAssignment;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
@@ -68,7 +70,7 @@ impl<L: Literal + Debug> SolverConfig for LiteralConfig<L> {
 #[derive(Debug, Clone)]
 struct PhaseSelectorConfig<P: PhaseSelector>(PhantomData<P>);
 
-impl<P: PhaseSelector + Debug> SolverConfig for PhaseSelectorConfig<P> {
+impl<P: PhaseSelector + Debug + Clone> SolverConfig for PhaseSelectorConfig<P> {
     type Assignment = VecAssignment;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
@@ -78,9 +80,11 @@ impl<P: PhaseSelector + Debug> SolverConfig for PhaseSelectorConfig<P> {
 }
 
 #[derive(Debug, Clone)]
-struct PropagatorConfig<Prop: Propagator<L, A>, L: Literal, A: Assignment>(PhantomData<(Prop, L, A)>);
+struct PropagatorConfig<Prop: Propagator<L, A>, L: Literal, A: Assignment>(
+    PhantomData<(Prop, L, A)>,
+);
 
-impl<Prop: Propagator<L, A> + Debug, L: Literal, A: Assignment + Debug> SolverConfig
+impl<Prop: Propagator<L, A> + Debug + Clone, L: Literal, A: Assignment + Debug + Clone> SolverConfig
     for PropagatorConfig<Prop, L, A>
 {
     type Assignment = A;
@@ -145,18 +149,21 @@ fn solve_graph_colouring_with_preprocessors(
     for i in 1..100 {
         let file = format!("data/flat30-60/flat30-{}.cnf", i);
         let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
-
-        let mut state: Cdcl = Solver::new(cnf.clone());
-
+        let mut clauses = cnf.clauses;
+        
         if tautology_elimination {
-            state.add_preprocessor(TautologyElimination);
+            clauses = TautologyElimination.preprocess(&clauses);
         }
         if pure_literal {
-            state.add_preprocessor(PureLiteralElimination);
+            clauses = PureLiteralElimination.preprocess(&clauses);
         }
         if subsumption_elimination {
-            state.add_preprocessor(SubsumptionElimination);
+            clauses = SubsumptionElimination.preprocess(&clauses);
         }
+        
+        let cnf = Cnf::from(clauses);
+        
+        let mut state: Cdcl = Solver::new(cnf);
 
         let sol = state.solve();
         black_box(sol);
@@ -467,8 +474,8 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.bench_function("Tautology", |b| {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
-                let mut state: Cdcl = Solver::new(cnf.clone());
-                state.add_preprocessor(TautologyElimination);
+                let cnf = Cnf::from(TautologyElimination.preprocess(&cnf.clauses));
+                let mut state: Cdcl = Solver::new(cnf);
                 black_box(state.solve());
             }
         })
@@ -477,8 +484,9 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.bench_function("Pure Literal", |b| {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
+                let cnf = Cnf::from(PureLiteralElimination.preprocess(&cnf.clauses));
+                
                 let mut state: Cdcl = Solver::new(cnf.clone());
-                state.add_preprocessor(PureLiteralElimination);
                 black_box(state.solve());
             }
         })
@@ -487,39 +495,50 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.bench_function("Subsumption", |b| {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
+                let cnf = Cnf::from(SubsumptionElimination.preprocess(&cnf.clauses));
                 let mut state: Cdcl = Solver::new(cnf.clone());
-                state.add_preprocessor(SubsumptionElimination);
                 black_box(state.solve());
             }
         })
     });
 
     group.finish();
-    
+
     let mut group = c.benchmark_group("graph_colouring - Propagator");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
-    
+
     group.bench_function("WatchedLiterals", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<PropagatorConfig<WatchedLiterals<PackedLiteral, VecAssignment>, PackedLiteral, VecAssignment>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<
+                    PropagatorConfig<
+                        WatchedLiterals<PackedLiteral, VecAssignment>,
+                        PackedLiteral,
+                        VecAssignment,
+                    >,
+                > = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
     });
-    
+
     group.bench_function("Linear checking", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<PropagatorConfig<UnitSearch<PackedLiteral, VecAssignment>, PackedLiteral, VecAssignment>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<
+                    PropagatorConfig<
+                        UnitSearch<PackedLiteral, VecAssignment>,
+                        PackedLiteral,
+                        VecAssignment,
+                    >,
+                > = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
     });
-    
+
     group.finish();
-    
 }
 
 criterion_group!(benches, bench_graph_colouring);

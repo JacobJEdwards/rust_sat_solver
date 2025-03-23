@@ -1,6 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
-use itertools::Itertools;
 use crate::sat::assignment::{Assignment, Solutions};
 use crate::sat::clause::Clause;
 use crate::sat::cnf;
@@ -8,15 +7,17 @@ use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{Analyser, Conflict};
 use crate::sat::literal::Literal;
 use crate::sat::phase_saving::PhaseSelector;
-use crate::sat::preprocessing::{Preprocessor, PreprocessorChain};
-use crate::sat::propagation::{Propagator};
+use crate::sat::preprocessing::{PreprocessorChain};
+use crate::sat::propagation::Propagator;
 use crate::sat::restarter::Restarter;
 use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
 use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// PREPROCESSING NOT IMPLEMENTED
+
+#[derive(Debug, Clone)]
 pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
     pub assignment: Config::Assignment,
 
@@ -32,7 +33,7 @@ pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
 
     pub trail: Trail<Config::Literal>,
 
-    pub preprocessors: PreprocessorChain,
+    pub preprocessors: PreprocessorChain<Config::Literal>,
 
     pub restarter: Config::Restarter,
 
@@ -42,11 +43,6 @@ pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
 }
 
 impl<Config: SolverConfig> Cdcl<Config> {
-    pub fn add_preprocessor<T: Preprocessor>(&self, preprocessor: T) -> &Self {
-        self.preprocessors.add_preprocessor(preprocessor);
-        self
-    }
-
     pub fn all_assigned(&self) -> bool {
         self.assignment.all_assigned()
     }
@@ -72,7 +68,9 @@ impl<Config: SolverConfig> Cdcl<Config> {
 
         #[cfg(debug_assertions)]
         {
-            debug_assert!(!self.cnf[c_ref].iter().any(|l| self.assignment.literal_value(*l) == Some(false)));
+            debug_assert!(!self.cnf[c_ref]
+                .iter()
+                .any(|l| self.assignment.literal_value(*l) == Some(false)));
             let lit_1 = self.cnf[c_ref][0];
             let lit_2 = self.cnf[c_ref][1];
 
@@ -86,12 +84,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
     fn new(cnf: Cnf<Config::Literal>) -> Self {
         let non_learnt_clauses_idx = cnf.len();
         let propagator = Propagator::new(&cnf);
-        let vars = cnf
-            .clauses
-            .iter()
-            .flat_map(|c| c.iter().map(|l| l.variable()))
-            .collect_vec();
-
+        let vars = cnf.vars();
         let selector = Config::VariableSelector::new(cnf.num_vars, &vars);
 
         Self {
@@ -118,15 +111,11 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             return None;
         }
 
-        let cnf = self.preprocessors.preprocess(&self.cnf);
-        self.cnf = cnf;
-
         loop {
-            if let Some(c_ref) = self.propagator.propagate(
-                &mut self.trail,
-                &mut self.assignment,
-                &mut self.cnf,
-            ) {
+            if let Some(c_ref) =
+                self.propagator
+                    .propagate(&mut self.trail, &mut self.assignment, &mut self.cnf)
+            {
                 let (conflict, to_bump) =
                     Analyser::analyse(&self.cnf, &self.trail, &self.assignment, c_ref);
 
@@ -152,7 +141,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 
                         // sometimes works ?? wat
                         clause.is_learnt = true;
-                        self.add_propagation(clause[0], self.cnf.len());
+                        // self.add_propagation(clause[0], self.cnf.len());
                         // self.add_clause(clause);
                     }
 

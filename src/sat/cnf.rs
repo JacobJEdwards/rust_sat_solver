@@ -2,7 +2,8 @@
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
 use crate::sat::assignment::Solutions;
-use crate::sat::literal::{Literal, PackedLiteral};
+use crate::sat::literal::{Literal, PackedLiteral, Variable};
+use itertools::Itertools;
 use std::ops::{Index, IndexMut};
 
 pub type DecisionLevel = usize;
@@ -48,6 +49,24 @@ impl<T: Literal> Cnf<T> {
             num_vars: num_vars as usize,
         }
     }
+    
+    pub fn num_vars(&self) -> usize {
+        let num_vars = self.clauses
+            .iter()
+            .flat_map(Clause::iter)
+            .map(|l: &T| l.variable())
+            .max()
+            .unwrap_or(0)
+            + 1;
+        num_vars as usize
+    }
+
+    #[must_use] pub fn vars(&self) -> Vec<Variable> {
+        self.clauses
+            .iter()
+            .flat_map(|c| c.iter().map(|l| l.variable()))
+            .collect_vec()
+    }
 
     pub fn remove(&mut self, idx: usize) {
         self.clauses.remove(idx);
@@ -66,8 +85,8 @@ impl<T: Literal> Cnf<T> {
 
         self.clauses.push(clause);
 
-        if max_var > self.num_vars {
-            self.num_vars = max_var;
+        if max_var + 1 > self.num_vars {
+            self.num_vars = max_var + 1;
         }
     }
 
@@ -174,6 +193,12 @@ fn to_expr_literal<T: Literal>(literal: T) -> Expr {
 impl<T: Literal> From<Expr> for Cnf<T> {
     fn from(expr: Expr) -> Self {
         to_cnf(&expr)
+    }
+}
+
+impl <L: Literal> From<Vec<Clause<L>>> for Cnf<L> {
+    fn from(clauses: Vec<Clause<L>>) -> Self {
+        Self::from_iter(clauses)
     }
 }
 

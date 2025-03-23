@@ -3,8 +3,8 @@
 use crate::sat::assignment::Assignment;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use std::ops::{Index, IndexMut};
 use itertools::Itertools;
+use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
 pub enum Reason {

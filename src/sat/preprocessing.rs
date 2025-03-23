@@ -2,62 +2,53 @@ use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use std::collections::HashSet;
+use std::fmt::Debug;
+use std::sync::Arc;
 
-pub trait Preprocessor {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L>;
+pub trait Preprocessor<L: Literal> {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>>;
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub struct NilPreprocessor;
-
-impl Preprocessor for NilPreprocessor {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
-        cnf.clone()
+impl<L: Literal> Debug for PreprocessorChain<L> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreprocessorChain").finish()
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub struct ConsPreprocessor<H, T> {
-    head: H,
-    tail: T,
+#[derive(Clone, Default)]
+pub struct PreprocessorChain<L: Literal> {
+    preprocessors: Vec<Arc<dyn Preprocessor<L>>>,
 }
 
-impl<H, T> Preprocessor for ConsPreprocessor<H, T>
-where
-    H: Preprocessor,
-    T: Preprocessor,
-{
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
-        let intermediate = self.head.preprocess(cnf);
-        self.tail.preprocess(&intermediate)
-    }
-}
-
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub struct PreprocessorChain<T: Preprocessor = NilPreprocessor>(T);
-
-impl PreprocessorChain {
+impl<L: Literal> PreprocessorChain<L> {
     #[must_use]
     pub const fn new() -> Self {
-        Self(NilPreprocessor)
+        Self {
+            preprocessors: Vec::new(),
+        }
     }
 }
 
-impl<T: Preprocessor> PreprocessorChain<T> {
-    pub fn add_preprocessor<P: Preprocessor>(
+impl<L: Literal> PreprocessorChain<L> {
+    #[must_use]
+    pub fn add_preprocessor<P: Preprocessor<L> + 'static>(
         self,
         preprocessor: P,
-    ) -> PreprocessorChain<ConsPreprocessor<P, T>> {
-        PreprocessorChain(ConsPreprocessor {
-            head: preprocessor,
-            tail: self.0,
-        })
+    ) -> Self {
+        let mut preprocessors = self.preprocessors;
+        let preprocessor = Arc::new(preprocessor);
+        preprocessors.push(preprocessor);
+        Self { preprocessors }
     }
 }
 
-impl<T: Preprocessor> Preprocessor for PreprocessorChain<T> {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
-        self.0.preprocess(cnf)
+impl<L: Literal> Preprocessor<L> for PreprocessorChain<L> {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        self.preprocessors
+            .iter()
+            .fold(Vec::from(cnf), |cnf, preprocessor| {
+                preprocessor.preprocess(&cnf)
+            })
     }
 }
 
@@ -65,7 +56,7 @@ impl<T: Preprocessor> Preprocessor for PreprocessorChain<T> {
 pub struct PureLiteralElimination;
 
 impl PureLiteralElimination {
-    fn find_pures<L: Literal>(cnf: &Cnf<L>) -> HashSet<L> {
+    fn find_pures<L: Literal>(cnf: &[Clause<L>]) -> HashSet<L> {
         let mut pures = HashSet::new();
         let mut impures = HashSet::new();
 
@@ -89,9 +80,9 @@ impl PureLiteralElimination {
     }
 }
 
-impl Preprocessor for PureLiteralElimination {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
-        let mut cnf = cnf.clone();
+impl<L: Literal> Preprocessor<L> for PureLiteralElimination {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        let mut cnf = cnf.to_vec();
 
         let pures = Self::find_pures(&cnf);
 
@@ -107,7 +98,7 @@ impl Preprocessor for PureLiteralElimination {
             cnf.remove(i);
         }
 
-        cnf
+        cnf.to_vec()
     }
 }
 
@@ -120,9 +111,9 @@ impl SubsumptionElimination {
     }
 }
 
-impl Preprocessor for SubsumptionElimination {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
-        let mut result = cnf.clone();
+impl<L: Literal> Preprocessor<L> for SubsumptionElimination {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        let mut result = cnf.to_vec();
 
         let mut sorted_indices: Vec<_> = (0..result.len()).collect();
         sorted_indices.sort_by_key(|&i| result[i].len());
@@ -165,8 +156,8 @@ pub struct TautologyElimination;
 
 impl TautologyElimination {}
 
-impl Preprocessor for TautologyElimination {
-    fn preprocess<L: Literal>(&self, cnf: &Cnf<L>) -> Cnf<L> {
+impl<L: Literal> Preprocessor<L> for TautologyElimination {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
         cnf.iter()
             .filter(|clause| !clause.is_tautology())
             .cloned()

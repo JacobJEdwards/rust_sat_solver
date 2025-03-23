@@ -1,0 +1,104 @@
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - Phase saving}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Saved Phases & 2195674.11 & 19623.62 \\
+        Random Phases & 2225996.96 & 17466.37 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - Preprocessing}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Pure Literal & 2185652.36 & 25976.11 \\
+        Subsumption & 2182340.32 & 18794.93 \\
+        Tautology & 2210943.89 & 26526.52 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - Assignment type}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Hashmap & 5158867.08 & 55651.34 \\
+        Vec & 2197488.23 & 21575.68 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - Variable selection}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Vsids & 2194459.44 & 19873.96 \\
+        Random Order & 5217502.61 & 81951.66 \\
+        Fixed Order & 30906818.40 & 13908337.34 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - literal layout}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Packed & 2194611.93 & 245545.84 \\
+        Struct & 2420045.97 & 50178.22 \\
+        Doubled & 2186178.12 & 37422.51 \\
+        Negated & 2247915.95 & 34212.08 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - Propagator}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Linear checking & 7630110.45 & 108110.25 \\
+        WatchedLiterals & 2198154.73 & 24392.00 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph_colouring - restart strategy}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        Luby & 2199384.69 & 20626.08 \\
+        Exponential & 2194831.36 & 25235.52 \\
+        Never & 2161504.77 & 14221.22 \\
+        Linear & 2181769.23 & 21236.99 \\
+        Geometric & 2193747.46 & 27109.84 \\
+        \hline
+    \end{tabular}
+\end{table}
+

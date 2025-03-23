@@ -1,11 +1,10 @@
-use sat_solver::sat::solver::SolverConfig;
+use crate::sat::cnf::Cnf;
 use crate::sat::cdcl::Cdcl;
 use crate::sat::dimacs::parse_file;
+use crate::sat::dpll::Dpll;
 use crate::sat::literal::PackedLiteral;
-use crate::sat::preprocessing::{
-    PureLiteralElimination, SubsumptionElimination, TautologyElimination,
-};
-use crate::sat::solver::Solver;
+use crate::sat::preprocessing::{Preprocessor, PreprocessorChain, PureLiteralElimination, SubsumptionElimination, TautologyElimination};
+use crate::sat::solver::{Solver};
 
 mod nonogram;
 mod sat;
@@ -32,7 +31,7 @@ fn main() {
     for i in 1..100 {
         let file = format!("data/flat30-60/flat30-{}.cnf", i);
         let cnf = parse_file::<PackedLiteral>(&file).unwrap();
-        let mut state: Cdcl = Cdcl::new(cnf.clone());
+        let mut state: Cdcl = Solver::new(cnf.clone());
         let sol = state.solve();
 
         println!("{:?}", file);
@@ -52,13 +51,14 @@ fn main() {
 
     for i in 1..30 {
         let file = format!("data/uf20-91/uf20-0{}.cnf", i);
-        let cnf = parse_file(&file).unwrap();
-        let mut state: Cdcl = Solver::new(cnf.clone());
-
-        state
-            .add_preprocessor(TautologyElimination)
-            .add_preprocessor(SubsumptionElimination)
-            .add_preprocessor(PureLiteralElimination);
+        let cnf = parse_file::<PackedLiteral>(&file).unwrap();
+        
+        let clauses = SubsumptionElimination.preprocess(&cnf.clauses);
+        let clauses = PureLiteralElimination.preprocess(&clauses);
+        let clauses = TautologyElimination.preprocess(&clauses);
+        
+        let cnf = Cnf::from(clauses);
+        let mut state: Cdcl = Solver::new(cnf);
 
         let time = std::time::Instant::now();
         let sol = state.solve();
@@ -67,7 +67,7 @@ fn main() {
         println!("time: {:?}", time.elapsed());
 
         if let Some(sol) = sol {
-            let verify = cnf.verify(&sol);
+            let verify = state.cnf.verify(&sol);
 
             println!("verifying solution: {:?}", verify);
 
