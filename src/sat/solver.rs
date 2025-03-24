@@ -7,7 +7,7 @@ use crate::sat::literal::PackedLiteral;
 use crate::sat::phase_saving::{PhaseSelector, SavedPhases};
 use crate::sat::preprocessing::Preprocessor;
 use crate::sat::propagation::WatchedLiterals;
-use crate::sat::propagation::{Propagator, UnitSearch};
+use crate::sat::propagation::{Propagator};
 use crate::sat::restarter::{Luby, Restarter};
 use crate::sat::variable_selection::{VariableSelection, Vsids};
 use std::fmt::Debug;

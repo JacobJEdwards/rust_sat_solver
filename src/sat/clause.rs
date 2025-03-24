@@ -40,6 +40,75 @@ impl<T: Literal + Hash + Eq> Clause<T> {
             is_learnt: false,
         }
     }
+    
+    #[must_use]
+    pub fn resolve(&self, other: &Self, pivot: T) -> Self {
+
+        if !self.literals.contains(&pivot) || !other.literals.contains(&pivot.negated()) {
+            return self.clone(); // No resolution possible, return original
+        }
+
+        let mut resolved_literals: HashSet<T> = HashSet::new();
+
+        // Add literals from both clauses except the pivot
+        for &lit in &self.literals {
+            if lit != pivot {
+                resolved_literals.insert(lit);
+            }
+        }
+        for &lit in &other.literals {
+            if lit != pivot.negated() {
+                resolved_literals.insert(lit);
+            }
+        }
+
+        let resolved_clause = Self::new(resolved_literals.into_iter().collect());
+
+        if resolved_clause.is_tautology() {
+            Self::default() 
+        } else {
+            resolved_clause
+        }
+    }
+
+    /// Special case of resolution when one clause is binary (exactly two literals).
+    #[must_use]
+    pub fn resolve_binary(&self, binary: &Self) -> Option<Self> {
+        if binary.len() != 2 {
+            return None; // Not a binary clause, return None
+        }
+
+        let bin_lit1 = binary.literals[0];
+        let bin_lit2 = binary.literals[1];
+
+        // Find a matching literal in `self` that can be resolved
+        for &lit in &self.literals {
+            if lit == bin_lit1.negated() {
+                // Resolve with bin_lit1
+                let mut new_clause = self.clone();
+                new_clause.remove_literal(new_clause.literals.iter().position(|&x| x == lit).unwrap_or(new_clause.literals.len() - 1));
+                new_clause.push(bin_lit2);
+
+                if new_clause.is_tautology() {
+                    return None;
+                }
+
+                return Some(new_clause);
+            } else if lit == bin_lit2.negated() {
+                let mut new_clause = self.clone();
+                new_clause.remove_literal(new_clause.literals.iter().position(|&x| x == lit).unwrap_or(new_clause.literals.len() - 1));
+                new_clause.push(bin_lit1);
+
+                if new_clause.is_tautology() {
+                    return None;
+                }
+
+                return Some(new_clause);
+            }
+        }
+
+        None
+    }
 
     pub fn push(&mut self, literal: T) {
         if !self.literals.contains(&literal) {

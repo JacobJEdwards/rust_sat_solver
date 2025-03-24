@@ -3,7 +3,7 @@ use crate::sat::cdcl::Cdcl;
 use crate::sat::dimacs::parse_file;
 use crate::sat::dpll::Dpll;
 use crate::sat::literal::PackedLiteral;
-use crate::sat::preprocessing::{Preprocessor, PreprocessorChain, PureLiteralElimination, SubsumptionElimination, TautologyElimination};
+use crate::sat::preprocessing::{BlockedClauseElimination, BoundedVariableElimination, HyperBinaryResolution, Preprocessor, PreprocessorChain, PureLiteralElimination, SubsumptionElimination, TautologyElimination};
 use crate::sat::solver::{Solver};
 
 mod nonogram;
@@ -52,15 +52,19 @@ fn main() {
     for i in 1..30 {
         let file = format!("data/uf20-91/uf20-0{}.cnf", i);
         let cnf = parse_file::<PackedLiteral>(&file).unwrap();
-        
-        let clauses = SubsumptionElimination.preprocess(&cnf.clauses);
+
+        let time = std::time::Instant::now();
+        let clauses = cnf.clauses;
+        let clauses = SubsumptionElimination.preprocess(&clauses);
         let clauses = PureLiteralElimination.preprocess(&clauses);
         let clauses = TautologyElimination.preprocess(&clauses);
+        // let clauses = BoundedVariableElimination.preprocess(&clauses);
+        // let clauses = BlockedClauseElimination.preprocess(&clauses);
+        // let clauses = HyperBinaryResolution.preprocess(&clauses);
         
         let cnf = Cnf::from(clauses);
         let mut state: Cdcl = Solver::new(cnf);
 
-        let time = std::time::Instant::now();
         let sol = state.solve();
 
         println!("{:?}", sol);

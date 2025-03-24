@@ -4,6 +4,7 @@ use crate::sat::literal::Literal;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::sync::Arc;
+use itertools::Itertools;
 
 pub trait Preprocessor<L: Literal> {
     fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>>;
@@ -60,7 +61,7 @@ impl PureLiteralElimination {
         let mut pures = HashSet::new();
         let mut impures = HashSet::new();
 
-        for clause in cnf.iter() {
+        for clause in cnf {
             for &lit in clause.iter() {
                 if impures.contains(&lit.variable()) {
                     continue;
@@ -98,7 +99,7 @@ impl<L: Literal> Preprocessor<L> for PureLiteralElimination {
             cnf.remove(i);
         }
 
-        cnf.to_vec()
+        cnf.clone()
     }
 }
 
@@ -162,5 +163,116 @@ impl<L: Literal> Preprocessor<L> for TautologyElimination {
             .filter(|clause| !clause.is_tautology())
             .cloned()
             .collect()
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct BoundedVariableElimination;
+
+impl BoundedVariableElimination {
+    fn eliminate_variable<L: Literal>(cnf: &[Clause<L>], var: L) -> Vec<Clause<L>> {
+        let mut new_clauses = Vec::new();
+        let mut pos_clauses = Vec::new();
+        let mut neg_clauses = Vec::new();
+
+        for clause in cnf {
+            if clause.iter().contains(&var) {
+                pos_clauses.push(clause.clone());
+            } else if clause.iter().contains(&var.negated()) {
+                neg_clauses.push(clause.clone());
+            } else {
+                new_clauses.push(clause.clone());
+            }
+        }
+
+        for pos in &pos_clauses {
+            for neg in &neg_clauses {
+                let resolved = pos.resolve(neg, var);
+                if !resolved.is_tautology() {
+                    new_clauses.push(resolved);
+                }
+            }
+        }
+
+        new_clauses
+    }
+}
+
+impl<L: Literal> Preprocessor<L> for BoundedVariableElimination {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        let mut result = cnf.to_vec();
+        let vars: HashSet<L> = result.iter().flat_map(Clause::iter).copied().collect();
+
+        for var in vars {
+            if result.len() > 1000 { // Prevent clause explosion
+                break;
+            }
+            result = Self::eliminate_variable(&result, var);
+        }
+
+        result
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct BlockedClauseElimination;
+
+impl BlockedClauseElimination {
+    fn is_blocked_clause<L: Literal>(cnf: &[Clause<L>], clause: &Clause<L>, blocked_literal: L) -> bool {
+        for other in cnf {
+            if other != clause && other.iter().contains(&blocked_literal.negated()) {
+                let resolvent = clause.resolve(other, blocked_literal);
+                if !resolvent.is_tautology() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+impl<L: Literal> Preprocessor<L> for BlockedClauseElimination {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        let mut result = cnf.to_vec();
+        result.retain(|clause| {
+            clause.iter().any(|&lit| Self::is_blocked_clause(cnf, clause, lit))
+        });
+        result
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct HyperBinaryResolution;
+
+impl HyperBinaryResolution {
+    fn apply_hbr<L: Literal>(cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        let mut result = cnf.to_vec();
+        let mut binary_clauses = Vec::new();
+
+        for clause in cnf {
+            if clause.len() == 2 {
+                binary_clauses.push(clause.clone());
+            }
+        }
+
+        for clause in cnf {
+            if clause.len() > 2 {
+                for binary in &binary_clauses {
+                    if let Some(resolved) = clause.resolve_binary(binary) {
+                        if !resolved.is_tautology() {
+                            result.push(resolved);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+}
+
+impl<L: Literal> Preprocessor<L> for HyperBinaryResolution {
+    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+        Self::apply_hbr(cnf)
     }
 }
