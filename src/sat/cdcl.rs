@@ -7,7 +7,6 @@ use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{Analyser, Conflict};
 use crate::sat::literal::Literal;
 use crate::sat::phase_saving::PhaseSelector;
-use crate::sat::preprocessing::{PreprocessorChain};
 use crate::sat::propagation::Propagator;
 use crate::sat::restarter::Restarter;
 use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
@@ -15,31 +14,27 @@ use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
 
-// PREPROCESSING NOT IMPLEMENTED
-
 #[derive(Debug, Clone)]
 pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
-    pub assignment: Config::Assignment,
+    assignment: Config::Assignment,
 
-    pub propagator: Config::Propagator,
+    propagator: Config::Propagator,
 
-    pub cnf: Cnf<Config::Literal>,
+    pub cnf: Cnf<Config::Literal, Config::LiteralStorage>,
 
-    pub selector: Config::VariableSelector,
+    selector: Config::VariableSelector,
 
-    pub saved_phases: Config::PhaseSelector,
+    saved_phases: Config::PhaseSelector,
 
-    pub decision_level: cnf::DecisionLevel,
+    decision_level: cnf::DecisionLevel,
 
-    pub trail: Trail<Config::Literal>,
+    trail: Trail<Config::Literal, Config::LiteralStorage>,
 
-    pub preprocessors: PreprocessorChain<Config::Literal>,
+    restarter: Config::Restarter,
 
-    pub restarter: Config::Restarter,
+    restart_count: usize,
 
-    pub non_learnt_clauses_idx: usize,
-
-    pub restart_count: usize,
+    conflict_analysis: Analyser<Config::Literal, Config::LiteralStorage>,
 }
 
 impl<Config: SolverConfig> Cdcl<Config> {
@@ -48,6 +43,7 @@ impl<Config: SolverConfig> Cdcl<Config> {
     }
 
     fn should_restart(&mut self) -> bool {
+        #[allow(clippy::cast_precision_loss)]
         let conflict_rate = self.restart_count as f64 / self.trail.len() as f64;
         self.restarter.should_restart() || conflict_rate > 0.1
     }
@@ -57,7 +53,7 @@ impl<Config: SolverConfig> Cdcl<Config> {
             .push(lit, self.decision_level, Reason::Clause(c_ref));
     }
 
-    pub fn add_clause(&mut self, clause: Clause<Config::Literal>) {
+    pub fn add_clause(&mut self, clause: Clause<Config::Literal, Config::LiteralStorage>) {
         if clause.is_empty() || clause.is_tautology() {
             return;
         }
@@ -81,11 +77,11 @@ impl<Config: SolverConfig> Cdcl<Config> {
 }
 
 impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
-    fn new(cnf: Cnf<Config::Literal>) -> Self {
-        let non_learnt_clauses_idx = cnf.len();
+    fn new(cnf: Cnf<Config::Literal, Config::LiteralStorage>) -> Self {
         let propagator = Propagator::new(&cnf);
-        let vars = cnf.vars();
-        let selector = Config::VariableSelector::new(cnf.num_vars, &vars);
+        let vars = &cnf.lits;
+        let selector = Config::VariableSelector::new(cnf.num_vars, vars);
+        let analysis = Analyser::new(cnf.num_vars);
 
         Self {
             assignment: Assignment::new(cnf.num_vars),
@@ -96,9 +92,8 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             selector,
             restarter: Restarter::new(),
             decision_level: 0,
-            non_learnt_clauses_idx,
-            preprocessors: PreprocessorChain::new(),
             restart_count: 0,
+            conflict_analysis: analysis,
         }
     }
 
@@ -116,8 +111,13 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                 self.propagator
                     .propagate(&mut self.trail, &mut self.assignment, &mut self.cnf)
             {
-                let (conflict, to_bump) =
-                    Analyser::analyse(&self.cnf, &self.trail, &self.assignment, c_ref);
+                let (conflict, to_bump) = self.conflict_analysis.analyse_conflict(
+                    &self.cnf,
+                    &self.trail,
+                    &self.assignment,
+                    c_ref,
+                );
+                self.conflict_analysis.reset();
 
                 match conflict {
                     Conflict::Ground => return None,
@@ -134,7 +134,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                             .skip(1)
                             .map(|lit| self.trail.lit_to_level[lit.variable() as usize])
                             .min()
-                            .unwrap_or(0);
+                            .unwrap();
 
                         self.trail.backstep_to(&mut self.assignment, bt_level);
                         self.decision_level = bt_level;
@@ -146,7 +146,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                     }
 
                     Conflict::Restart(clause) => {
-                        self.selector.bumps(clause.iter().map(|l| l.variable()));
+                        self.selector.bumps(clause.iter().copied());
                         // self.add_clause(clause);
                         self.trail.backstep_to(&mut self.assignment, 0);
                         self.decision_level = 0;
@@ -155,6 +155,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 
                 self.selector.bumps(to_bump);
                 self.selector.decay(0.95);
+                self.saved_phases.on_conflict();
 
                 if self.should_restart() {
                     self.trail.backstep_to(&mut self.assignment, 0);
@@ -162,7 +163,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                 }
             }
 
-            self.decision_level += 1;
+            self.decision_level = self.decision_level.wrapping_add(1);
 
             if self.all_assigned() {
                 return Some(self.solutions());
@@ -174,17 +175,20 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                 return Some(self.solutions());
             }
 
-            let lit = lit.unwrap();
+            unsafe {
+                let lit = lit.unwrap_unchecked();
 
-            let next = self.saved_phases.get_next(lit);
+                // let next = self.saved_phases.get_next(lit);
+                //
+                // self.saved_phases.save(Config::Literal::new(lit, next));
 
-            self.saved_phases.save(Config::Literal::new(lit, next));
-
-            self.trail.push(
-                Literal::new(lit, !next),
-                self.decision_level,
-                Reason::Decision,
-            );
+                self.trail.push(
+                    lit,
+                    //Literal::new(lit, !next),
+                    self.decision_level,
+                    Reason::Decision,
+                );
+            }
         }
     }
 
@@ -198,25 +202,30 @@ mod tests {
     use super::*;
     use crate::sat::clause::Clause;
     use crate::sat::literal::PackedLiteral;
+    use crate::sat::solver::LiteralStorage;
 
-    fn get_cnf() -> Cnf<PackedLiteral> {
+    fn get_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
         Cnf {
             clauses: vec![
-                Clause::new(vec![PackedLiteral::new(1, false)]),
-                Clause::new(vec![PackedLiteral::new(2, false)]),
-                Clause::new(vec![PackedLiteral::new(3, false)]),
+                Clause::new(&[L::new(1, false)]),
+                Clause::new(&[L::new(2, false)]),
+                Clause::new(&[L::new(3, false)]),
             ],
             num_vars: 3,
+            vars: vec![1, 2, 3],
+            lits: vec![L::new(1, false), L::new(2, false), L::new(3, false)],
         }
     }
 
-    fn get_unsat_cnf() -> Cnf<PackedLiteral> {
+    fn get_unsat_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
         Cnf {
             clauses: vec![
-                Clause::new(vec![PackedLiteral::new(1, false)]),
-                Clause::new(vec![PackedLiteral::new(1, true)]),
+                Clause::new(&[L::new(1, false)]),
+                Clause::new(&[L::new(1, true)]),
             ],
             num_vars: 1,
+            vars: vec![1, 1],
+            lits: vec![L::new(1, false), L::new(1, true)],
         }
     }
 
@@ -246,7 +255,7 @@ mod tests {
     fn test_solve_unsat() {
         let cnf = get_unsat_cnf();
 
-        let mut state: Cdcl = Cdcl::new(cnf);
+        let mut state: Cdcl<DefaultConfig> = Cdcl::new(cnf);
 
         assert_eq!(state.solve(), Some(Solutions::default()));
     }
@@ -255,10 +264,12 @@ mod tests {
     fn test_solve_sat() {
         let cnf = Cnf {
             clauses: vec![
-                Clause::new(vec![PackedLiteral::new(1, false)]),
-                Clause::new(vec![PackedLiteral::new(1, true)]),
+                Clause::new(&[PackedLiteral::new(1, false)]),
+                Clause::new(&[PackedLiteral::new(1, true)]),
             ],
             num_vars: 1,
+            vars: vec![1, 1],
+            lits: vec![PackedLiteral::new(1, false), PackedLiteral::new(1, true)],
         };
 
         let mut state: Cdcl = Cdcl::new(cnf);

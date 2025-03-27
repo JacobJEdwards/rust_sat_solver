@@ -26,9 +26,9 @@ pub struct Luby {
 
 impl Luby {
     fn luby(x: usize) -> usize {
-        let mut k = 1;
+        let mut k = 1_usize;
         while (1 << (k - 1)) <= x {
-            k += 1;
+            k = k.wrapping_add(1);
         }
         if x == (1 << (k - 2)) {
             1 << (k - 2)
@@ -53,14 +53,14 @@ impl Restarter for Luby {
     }
 
     fn increment_restarts_in(&mut self) {
-        self.restarts_in -= 1;
+        self.restarts_in = self.restarts_in.wrapping_sub(1);
     }
 
     fn restart(&mut self) {
-        self.restarts += 1;
+        self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
         self.restarts_interval = Self::luby(self.restarts_next);
-        self.restarts_next += 1;
+        self.restarts_next = self.restarts_next.wrapping_add(1);
     }
 }
 
@@ -89,13 +89,13 @@ impl Restarter for Geometric {
     }
 
     fn increment_restarts_in(&mut self) {
-        self.restarts_in -= 1;
+        self.restarts_in = self.restarts_in.wrapping_sub(1);
     }
 
     fn restart(&mut self) {
-        self.restarts += 1;
+        self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval *= 2;
+        self.restarts_interval = self.restarts_interval.wrapping_mul(2);
     }
 
     fn should_restart(&mut self) -> bool {
@@ -103,7 +103,7 @@ impl Restarter for Geometric {
             self.restart();
             true
         } else {
-            self.restarts_in -= 1;
+            self.restarts_in = self.restarts_in.wrapping_sub(1);
             false
         }
     }
@@ -132,11 +132,11 @@ impl Restarter for Fixed {
     }
 
     fn increment_restarts_in(&mut self) {
-        self.restarts_in -= 1;
+        self.restarts_in = self.restarts_in.wrapping_sub(1);
     }
 
     fn restart(&mut self) {
-        self.restarts += 1;
+        self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
     }
 }
@@ -189,9 +189,9 @@ impl Restarter for Linear {
     }
 
     fn restart(&mut self) {
-        self.restarts += 1;
+        self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval += 100;
+        self.restarts_interval = self.restarts_interval.wrapping_add(100);
     }
 }
 
@@ -218,12 +218,12 @@ impl Restarter for Exponential {
     }
 
     fn increment_restarts_in(&mut self) {
-        self.restarts_in -= 1;
+        self.restarts_in = self.restarts_in.wrapping_sub(1);
     }
 
     fn restart(&mut self) {
-        self.restarts += 1;
+        self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval *= 2;
+        self.restarts_interval = self.restarts_interval.wrapping_mul(2);
     }
 }

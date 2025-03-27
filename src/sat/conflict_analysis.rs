@@ -4,66 +4,94 @@ use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::{Literal, Variable};
+use crate::sat::solver::LiteralStorage;
 use crate::sat::trail::{Reason, Trail};
+use bit_vec::BitVec;
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub enum Conflict<T: Literal> {
+pub enum Conflict<T: Literal, S: LiteralStorage<T>> {
     #[default]
     Ground,
-    Unit(Clause<T>),           // (clause)
-    Learned(usize, Clause<T>), // (s_idx, clause)
-    Restart(Clause<T>),        // (clause)
+    Unit(Clause<T, S>),           // (clause)
+    Learned(usize, Clause<T, S>), // (s_idx, clause)
+    Restart(Clause<T, S>),        // (clause)
 }
 
-pub struct Analyser<T: Literal> {
-    seen: Vec<bool>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct Analyser<T: Literal, S: LiteralStorage<T>> {
+    seen: BitVec,
     path_c: usize,
-    to_bump: Vec<Variable>,
-    data: std::marker::PhantomData<T>,
+    to_bump: SmallVec<[T; 12]>,
+    data: std::marker::PhantomData<*const (T, S)>,
 }
 
-impl<T: Literal> Analyser<T> {
-    fn new(num_vars: usize) -> Self {
+impl<T: Literal, S: LiteralStorage<T>> Analyser<T, S> {
+    pub(crate) fn new(num_vars: usize) -> Self {
         Self {
-            seen: vec![false; num_vars],
+            seen: BitVec::from_elem(num_vars, false),
             path_c: 0,
-            to_bump: Vec::new(),
+            to_bump: SmallVec::new(),
             data: std::marker::PhantomData,
+        }
+    }
+
+    fn is_seen(&self, idx: Variable) -> bool {
+        unsafe { self.seen.get_unchecked(idx as usize) }
+    }
+
+    fn set_seen(&mut self, idx: Variable) {
+        unsafe {
+            *self.seen.get_unchecked_mut(idx as usize) = true;
+        }
+    }
+
+    fn unset_seen(&mut self, idx: Variable) {
+        unsafe {
+            *self.seen.get_unchecked_mut(idx as usize) = false;
         }
     }
 
     fn resolve(
         &mut self,
-        c: &mut Clause<T>,
-        o: &Clause<T>,
+        c: &mut Clause<T, S>,
+        o: &Clause<T, S>,
         assignment: &impl Assignment,
         idx: Variable,
         c_idx: usize,
-        trail: &Trail<T>,
+        trail: &Trail<T, S>,
     ) {
         c.remove_literal(c_idx);
         self.path_c -= 1;
-        self.seen[idx as usize] = false;
+        self.unset_seen(idx);
 
         for &lit in o.iter() {
-            if !self.seen[lit.variable() as usize] && assignment.literal_value(lit) == Some(false) {
-                self.seen[lit.variable() as usize] = true;
-                self.to_bump.push(lit.variable());
+            let var = lit.variable();
+            if !self.is_seen(var) && assignment.literal_value(lit) == Some(false) {
+                self.set_seen(var);
+                self.to_bump.push(lit);
                 c.push(lit);
 
-                if trail.lit_to_level[lit.variable() as usize] >= trail.decision_level() {
-                    self.path_c += 1;
+                if trail.lit_to_level[var as usize] >= trail.decision_level() {
+                    self.path_c = self.path_c.wrapping_add(1);
                 }
             }
         }
     }
 
-    fn choose_literal(&self, c: &Clause<T>, trail: &Trail<T>, i: &mut usize) -> Option<usize> {
+    fn choose_literal(
+        &self,
+        c: &Clause<T, S>,
+        trail: &Trail<T, S>,
+        i: &mut usize,
+    ) -> Option<usize> {
         while *i > 0 {
             *i -= 1;
-            if self.seen[trail[*i].lit.variable() as usize] {
+            let var = trail[*i].lit.variable();
+
+            if self.is_seen(var) {
                 for k in 0..c.len() {
-                    if trail[*i].lit.variable() == c[k].variable() {
+                    if var == c[k].variable() {
                         return Some(k);
                     }
                 }
@@ -72,23 +100,24 @@ impl<T: Literal> Analyser<T> {
         None
     }
 
-    fn analyse_conflict(
+    pub(crate) fn analyse_conflict(
         &mut self,
-        cnf: &Cnf<T>,
-        trail: &Trail<T>,
+        cnf: &Cnf<T, S>,
+        trail: &Trail<T, S>,
         assignment: &impl Assignment,
         cref: usize,
-    ) -> (Conflict<T>, Vec<Variable>) {
+    ) -> (Conflict<T, S>, SmallVec<[T; 12]>) {
         let dl = trail.decision_level();
 
         let mut i = trail.len();
         let clause = &mut cnf[cref].clone();
 
         for &lit in clause.iter() {
-            self.seen[lit.variable() as usize] = true;
-            self.to_bump.push(lit.variable());
-            if trail.lit_to_level[lit.variable() as usize] >= dl {
-                self.path_c += 1;
+            let var = lit.variable();
+            self.set_seen(var);
+            self.to_bump.push(lit);
+            if trail.lit_to_level[var as usize] >= dl {
+                self.path_c = self.path_c.wrapping_add(1);
             }
         }
 
@@ -139,13 +168,9 @@ impl<T: Literal> Analyser<T> {
         }
     }
 
-    pub fn analyse(
-        cnf: &Cnf<T>,
-        trail: &Trail<T>,
-        assignment: &impl Assignment,
-        cref: usize,
-    ) -> (Conflict<T>, Vec<Variable>) {
-        let mut analyser = Self::new(cnf.num_vars);
-        analyser.analyse_conflict(cnf, trail, assignment, cref)
+    pub(crate) fn reset(&mut self) {
+        self.seen.clear();
+        self.path_c = 0;
+        self.to_bump.clear();
     }
 }

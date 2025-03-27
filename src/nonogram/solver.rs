@@ -60,7 +60,7 @@ impl Nonogram {
         solution
     }
 
-    pub fn to_cnf(&self) -> Cnf<PackedLiteral> {
+    pub fn to_cnf(&self) -> Cnf<PackedLiteral, Vec<PackedLiteral>> {
         let cell_clauses = generate_cell_clauses(self.clone());
         let cell_unique_clauses = generate_cell_unique_clauses(self.clone());
 

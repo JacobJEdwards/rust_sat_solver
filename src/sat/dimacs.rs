@@ -1,16 +1,16 @@
 // a parser for the DIMACS format
 
-use std::io::{self, BufRead};
-
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
+use crate::sat::solver::LiteralStorage;
+use std::io::{self, BufRead};
 
 // panics docs
 
 /// Parses a DIMACS file into a CNF.
 /// # Panics
 /// if the file is not in DIMACS format.
-pub fn parse_dimacs<R: BufRead, L: Literal>(reader: R) -> Cnf<L> {
+pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> Cnf<L, S> {
     let mut lines = reader.lines().map(|l| l.unwrap());
 
     let mut clauses = Vec::new();
@@ -37,7 +37,7 @@ pub fn parse_dimacs<R: BufRead, L: Literal>(reader: R) -> Cnf<L> {
 /// Parses a DIMACS file into a CNF.
 /// # Errors
 /// if the file cannot be read.
-pub fn parse_file<T: Literal>(file: &str) -> io::Result<Cnf<T>> {
+pub fn parse_file<T: Literal, S: LiteralStorage<T>>(file: &str) -> io::Result<Cnf<T, S>> {
     let file = std::fs::File::open(file)?;
     let reader = io::BufReader::new(file);
     Ok(parse_dimacs(reader))

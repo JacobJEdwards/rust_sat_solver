@@ -1,27 +1,28 @@
 use crate::sat::clause::Clause;
-use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
+use crate::sat::solver::LiteralStorage;
+use itertools::Itertools;
+use num::traits::WrappingAdd;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::sync::Arc;
-use itertools::Itertools;
 
-pub trait Preprocessor<L: Literal> {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>>;
+pub trait Preprocessor<L: Literal, S: LiteralStorage<L>> {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>>;
 }
 
-impl<L: Literal> Debug for PreprocessorChain<L> {
+impl<L: Literal, S: LiteralStorage<L>> Debug for PreprocessorChain<L, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PreprocessorChain").finish()
     }
 }
 
 #[derive(Clone, Default)]
-pub struct PreprocessorChain<L: Literal> {
-    preprocessors: Vec<Arc<dyn Preprocessor<L>>>,
+pub struct PreprocessorChain<L: Literal, S: LiteralStorage<L>> {
+    preprocessors: Vec<Arc<dyn Preprocessor<L, S>>>,
 }
 
-impl<L: Literal> PreprocessorChain<L> {
+impl<L: Literal, S: LiteralStorage<L>> PreprocessorChain<L, S> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -30,12 +31,9 @@ impl<L: Literal> PreprocessorChain<L> {
     }
 }
 
-impl<L: Literal> PreprocessorChain<L> {
+impl<L: Literal, S: LiteralStorage<L>> PreprocessorChain<L, S> {
     #[must_use]
-    pub fn add_preprocessor<P: Preprocessor<L> + 'static>(
-        self,
-        preprocessor: P,
-    ) -> Self {
+    pub fn add_preprocessor<P: Preprocessor<L, S> + 'static>(self, preprocessor: P) -> Self {
         let mut preprocessors = self.preprocessors;
         let preprocessor = Arc::new(preprocessor);
         preprocessors.push(preprocessor);
@@ -43,8 +41,8 @@ impl<L: Literal> PreprocessorChain<L> {
     }
 }
 
-impl<L: Literal> Preprocessor<L> for PreprocessorChain<L> {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PreprocessorChain<L, S> {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         self.preprocessors
             .iter()
             .fold(Vec::from(cnf), |cnf, preprocessor| {
@@ -57,7 +55,7 @@ impl<L: Literal> Preprocessor<L> for PreprocessorChain<L> {
 pub struct PureLiteralElimination;
 
 impl PureLiteralElimination {
-    fn find_pures<L: Literal>(cnf: &[Clause<L>]) -> HashSet<L> {
+    fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> HashSet<L> {
         let mut pures = HashSet::new();
         let mut impures = HashSet::new();
 
@@ -81,8 +79,8 @@ impl PureLiteralElimination {
     }
 }
 
-impl<L: Literal> Preprocessor<L> for PureLiteralElimination {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PureLiteralElimination {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut cnf = cnf.to_vec();
 
         let pures = Self::find_pures(&cnf);
@@ -107,13 +105,16 @@ impl<L: Literal> Preprocessor<L> for PureLiteralElimination {
 pub struct SubsumptionElimination;
 
 impl SubsumptionElimination {
-    fn is_subsumed_by<L: Literal>(clause: &Clause<L>, other: &Clause<L>) -> bool {
-        clause.iter().all(|lit| other.literals.contains(lit))
+    fn is_subsumed_by<L: Literal, S: LiteralStorage<L>>(
+        clause: &Clause<L, S>,
+        other: &Clause<L, S>,
+    ) -> bool {
+        clause.iter().all(|lit| other.literals.iter().contains(lit))
     }
 }
 
-impl<L: Literal> Preprocessor<L> for SubsumptionElimination {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for SubsumptionElimination {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut result = cnf.to_vec();
 
         let mut sorted_indices: Vec<_> = (0..result.len()).collect();
@@ -129,7 +130,7 @@ impl<L: Literal> Preprocessor<L> for SubsumptionElimination {
 
             let clause_i = &cnf[idx_i];
 
-            for &idx_j in sorted_indices.iter().skip(i + 1) {
+            for &idx_j in sorted_indices.iter().skip(i.wrapping_add(1)) {
                 if to_remove.contains(&idx_j) {
                     continue;
                 }
@@ -157,8 +158,8 @@ pub struct TautologyElimination;
 
 impl TautologyElimination {}
 
-impl<L: Literal> Preprocessor<L> for TautologyElimination {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for TautologyElimination {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         cnf.iter()
             .filter(|clause| !clause.is_tautology())
             .cloned()
@@ -170,7 +171,10 @@ impl<L: Literal> Preprocessor<L> for TautologyElimination {
 pub struct BoundedVariableElimination;
 
 impl BoundedVariableElimination {
-    fn eliminate_variable<L: Literal>(cnf: &[Clause<L>], var: L) -> Vec<Clause<L>> {
+    fn eliminate_variable<L: Literal, S: LiteralStorage<L>>(
+        cnf: &[Clause<L, S>],
+        var: L,
+    ) -> Vec<Clause<L, S>> {
         let mut new_clauses = Vec::new();
         let mut pos_clauses = Vec::new();
         let mut neg_clauses = Vec::new();
@@ -198,13 +202,13 @@ impl BoundedVariableElimination {
     }
 }
 
-impl<L: Literal> Preprocessor<L> for BoundedVariableElimination {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for BoundedVariableElimination {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut result = cnf.to_vec();
         let vars: HashSet<L> = result.iter().flat_map(Clause::iter).copied().collect();
 
         for var in vars {
-            if result.len() > 1000 { // Prevent clause explosion
+            if result.len() > 1000 {
                 break;
             }
             result = Self::eliminate_variable(&result, var);
@@ -218,7 +222,11 @@ impl<L: Literal> Preprocessor<L> for BoundedVariableElimination {
 pub struct BlockedClauseElimination;
 
 impl BlockedClauseElimination {
-    fn is_blocked_clause<L: Literal>(cnf: &[Clause<L>], clause: &Clause<L>, blocked_literal: L) -> bool {
+    fn is_blocked_clause<L: Literal, S: LiteralStorage<L> + PartialEq>(
+        cnf: &[Clause<L, S>],
+        clause: &Clause<L, S>,
+        blocked_literal: L,
+    ) -> bool {
         for other in cnf {
             if other != clause && other.iter().contains(&blocked_literal.negated()) {
                 let resolvent = clause.resolve(other, blocked_literal);
@@ -231,11 +239,13 @@ impl BlockedClauseElimination {
     }
 }
 
-impl<L: Literal> Preprocessor<L> for BlockedClauseElimination {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L> + PartialEq> Preprocessor<L, S> for BlockedClauseElimination {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut result = cnf.to_vec();
         result.retain(|clause| {
-            clause.iter().any(|&lit| Self::is_blocked_clause(cnf, clause, lit))
+            clause
+                .iter()
+                .any(|&lit| Self::is_blocked_clause(cnf, clause, lit))
         });
         result
     }
@@ -245,7 +255,7 @@ impl<L: Literal> Preprocessor<L> for BlockedClauseElimination {
 pub struct HyperBinaryResolution;
 
 impl HyperBinaryResolution {
-    fn apply_hbr<L: Literal>(cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+    fn apply_hbr<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut result = cnf.to_vec();
         let mut binary_clauses = Vec::new();
 
@@ -271,8 +281,8 @@ impl HyperBinaryResolution {
     }
 }
 
-impl<L: Literal> Preprocessor<L> for HyperBinaryResolution {
-    fn preprocess(&self, cnf: &[Clause<L>]) -> Vec<Clause<L>> {
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for HyperBinaryResolution {
+    fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         Self::apply_hbr(cnf)
     }
 }

@@ -1,47 +1,52 @@
-use sat_solver::sat::preprocessing::Preprocessor;
 use criterion::{criterion_group, criterion_main, Criterion};
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
+use sat_solver::sat::cnf::Cnf;
 use sat_solver::sat::literal::{
     DoubleLiteral, Literal, NegativeLiteral, PackedLiteral, StructLiteral,
 };
 use sat_solver::sat::phase_saving::{PhaseSelector, RandomPhases, SavedPhases};
+use sat_solver::sat::preprocessing::Preprocessor;
 use sat_solver::sat::preprocessing::{
     PureLiteralElimination, SubsumptionElimination, TautologyElimination,
 };
 use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Exponential, Geometric, Linear, Luby, Never, Restarter};
-use sat_solver::sat::solver::{Solver, SolverConfig};
+use sat_solver::sat::solver::{LiteralStorage, Solver, SolverConfig};
 use sat_solver::sat::variable_selection::{FixedOrder, RandomOrder, VariableSelection, Vsids};
 use sat_solver::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN};
-use std::fmt::{Debug, Formatter};
+use smallvec::SmallVec;
+use std::fmt::Debug;
 use std::hint::black_box;
 use std::marker::PhantomData;
 use std::time::Duration;
-use sat_solver::sat::cnf::Cnf;
 
 #[derive(Debug, Clone)]
-struct AssignmentConfig<A: Assignment>(PhantomData<A>);
+struct AssignmentConfig<A: Assignment>(PhantomData<*const A>);
 
 impl<A: Assignment + Debug + Clone> SolverConfig for AssignmentConfig<A> {
     type Assignment = A;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
+    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
     type Restarter = Luby;
     type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<PackedLiteral, A>;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 #[derive(Debug, Clone)]
-struct SelectorConfig<V: VariableSelection>(PhantomData<V>);
+struct SelectorConfig<V: VariableSelection<SavedPhases, PackedLiteral>>(PhantomData<V>);
 
-impl<V: VariableSelection + Debug + Clone> SolverConfig for SelectorConfig<V> {
+impl<V: VariableSelection<SavedPhases, PackedLiteral> + Debug + Clone> SolverConfig
+    for SelectorConfig<V>
+{
     type Assignment = VecAssignment;
     type VariableSelector = V;
     type Literal = PackedLiteral;
+    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
     type Restarter = Luby;
     type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<PackedLiteral, VecAssignment>;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 #[derive(Debug, Clone)]
@@ -50,9 +55,10 @@ impl<R: Restarter + Debug + Clone> SolverConfig for RestarterConfig<R> {
     type Assignment = VecAssignment;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
+    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
     type Restarter = R;
     type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<PackedLiteral, VecAssignment>;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 #[derive(Debug, Clone)]
@@ -62,9 +68,10 @@ impl<L: Literal + Debug> SolverConfig for LiteralConfig<L> {
     type Assignment = VecAssignment;
     type VariableSelector = Vsids;
     type Literal = L;
+    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
     type Restarter = Luby;
     type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<L, VecAssignment>;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 #[derive(Debug, Clone)]
@@ -74,25 +81,44 @@ impl<P: PhaseSelector + Debug + Clone> SolverConfig for PhaseSelectorConfig<P> {
     type Assignment = VecAssignment;
     type VariableSelector = Vsids;
     type Literal = PackedLiteral;
+    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
     type Restarter = Luby;
     type PhaseSelector = P;
-    type Propagator = WatchedLiterals<PackedLiteral, VecAssignment>;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 #[derive(Debug, Clone)]
-struct PropagatorConfig<Prop: Propagator<L, A>, L: Literal, A: Assignment>(
-    PhantomData<(Prop, L, A)>,
+struct PropagatorConfig<Prop: Propagator<L, S, A>, L: Literal, S: LiteralStorage<L>, A: Assignment>(
+    PhantomData<(Prop, L, S, A)>,
 );
 
-impl<Prop: Propagator<L, A> + Debug + Clone, L: Literal, A: Assignment + Debug + Clone> SolverConfig
-    for PropagatorConfig<Prop, L, A>
+impl<
+        Prop: Propagator<L, S, A> + Debug + Clone,
+        L: Literal,
+        S: LiteralStorage<L>,
+        A: Assignment + Debug + Clone,
+    > SolverConfig for PropagatorConfig<Prop, L, S, A>
 {
     type Assignment = A;
     type VariableSelector = Vsids;
     type Literal = L;
+    type LiteralStorage = S;
     type Restarter = Luby;
     type PhaseSelector = SavedPhases;
     type Propagator = Prop;
+}
+
+#[derive(Debug, Clone)]
+struct LiteralStorageConfig<S: LiteralStorage<PackedLiteral>>(PhantomData<S>);
+
+impl<S: LiteralStorage<PackedLiteral>> SolverConfig for LiteralStorageConfig<S> {
+    type Assignment = VecAssignment;
+    type VariableSelector = Vsids;
+    type Literal = PackedLiteral;
+    type LiteralStorage = S;
+    type Restarter = Luby;
+    type PhaseSelector = SavedPhases;
+    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
 }
 
 fn bench_sudoku(c: &mut Criterion) {
@@ -104,21 +130,21 @@ fn bench_sudoku(c: &mut Criterion) {
     let sudoku = Sudoku::new(Board::from(board));
     let cnf = sudoku.to_cnf();
 
-    c.bench_function("sudoku - vec assignment", |b| {
-        b.iter(|| {
-            let mut state: Cdcl<AssignmentConfig<VecAssignment>> = Solver::new(cnf.clone());
-            let sol = state.solve();
-            black_box(sol);
-        })
-    });
-
-    c.bench_function("sudoku - hash map assignment", |b| {
-        b.iter(|| {
-            let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
-            let sol = state.solve();
-            black_box(sol);
-        })
-    });
+    // c.bench_function("sudoku - vec assignment", |b| {
+    //     b.iter(|| {
+    //         let mut state: Cdcl = Solver::new(cnf.clone());
+    //         let sol = state.solve();
+    //         black_box(sol);
+    //     })
+    // });
+    //
+    // c.bench_function("sudoku - hash map assignment", |b| {
+    //     b.iter(|| {
+    //         let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
+    //         let sol = state.solve();
+    //         black_box(sol);
+    //     })
+    // });
 }
 
 fn solve_3sat<Config: SolverConfig>() {
@@ -137,6 +163,9 @@ fn solve_graph_colouring<Config: SolverConfig>() {
         let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
         let mut state: Cdcl<Config> = Solver::new(cnf.clone());
         let sol = state.solve();
+        if !cnf.verify(&sol.clone().unwrap()) {
+            eprintln!("Failed to verify solution for {}", file);
+        }
         black_box(sol);
     }
 }
@@ -150,7 +179,7 @@ fn solve_graph_colouring_with_preprocessors(
         let file = format!("data/flat30-60/flat30-{}.cnf", i);
         let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
         let mut clauses = cnf.clauses;
-        
+
         if tautology_elimination {
             clauses = TautologyElimination.preprocess(&clauses);
         }
@@ -160,9 +189,9 @@ fn solve_graph_colouring_with_preprocessors(
         if subsumption_elimination {
             clauses = SubsumptionElimination.preprocess(&clauses);
         }
-        
+
         let cnf = Cnf::from(clauses);
-        
+
         let mut state: Cdcl = Solver::new(cnf);
 
         let sol = state.solve();
@@ -245,10 +274,10 @@ fn bench_graph_colouring(c: &mut Criterion) {
         }
     }
 
-    group.bench_function("Packed", |b| {
+    group.bench_function("Negated", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<PackedLiteral>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<LiteralConfig<NegativeLiteral>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -283,10 +312,10 @@ fn bench_graph_colouring(c: &mut Criterion) {
         }
     }
 
-    group.bench_function("Struct", |b| {
+    group.bench_function("Packed", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<StructLiteral>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<LiteralConfig<PackedLiteral>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -302,10 +331,10 @@ fn bench_graph_colouring(c: &mut Criterion) {
         }
     }
 
-    group.bench_function("Negated", |b| {
+    group.bench_function("Struct", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<NegativeLiteral>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<LiteralConfig<StructLiteral>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -485,7 +514,7 @@ fn bench_graph_colouring(c: &mut Criterion) {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
                 let cnf = Cnf::from(PureLiteralElimination.preprocess(&cnf.clauses));
-                
+
                 let mut state: Cdcl = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
@@ -504,6 +533,16 @@ fn bench_graph_colouring(c: &mut Criterion) {
 
     group.finish();
 
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
     let mut group = c.benchmark_group("graph_colouring - Propagator");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
@@ -513,8 +552,9 @@ fn bench_graph_colouring(c: &mut Criterion) {
             for cnf in &cnfs {
                 let mut state: Cdcl<
                     PropagatorConfig<
-                        WatchedLiterals<PackedLiteral, VecAssignment>,
+                        WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
                         PackedLiteral,
+                        SmallVec<[PackedLiteral; 8]>,
                         VecAssignment,
                     >,
                 > = Solver::new(cnf.clone());
@@ -528,8 +568,9 @@ fn bench_graph_colouring(c: &mut Criterion) {
             for cnf in &cnfs {
                 let mut state: Cdcl<
                     PropagatorConfig<
-                        UnitSearch<PackedLiteral, VecAssignment>,
+                        UnitSearch<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
                         PackedLiteral,
+                        SmallVec<[PackedLiteral; 8]>,
                         VecAssignment,
                     >,
                 > = Solver::new(cnf.clone());

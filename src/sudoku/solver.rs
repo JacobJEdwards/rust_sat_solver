@@ -422,7 +422,7 @@ impl Sudoku {
     }
 
     #[must_use]
-    pub fn to_cnf(&self) -> Cnf<PackedLiteral> {
+    pub fn to_cnf(&self) -> Cnf<PackedLiteral, Vec<PackedLiteral>> {
         let size = self.size as usize;
         let block_size = self.size.block_size();
 

@@ -2,35 +2,32 @@ use crate::sat::assignment::{Assignment, Solutions};
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use crate::sat::preprocessing::{Preprocessor, PreprocessorChain};
 use crate::sat::propagation::Propagator;
-use crate::sat::solver::Preprocessable;
 use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
+use num::traits::WrappingAdd;
 
 #[derive(Debug, Clone)]
 pub struct Dpll<Config: SolverConfig + Clone = DefaultConfig> {
-    pub trail: Trail<Config::Literal>,
-    pub preprocessors: PreprocessorChain<Config::Literal>,
+    pub trail: Trail<Config::Literal, Config::LiteralStorage>,
     pub assignment: Config::Assignment,
     pub decision_level: cnf::DecisionLevel,
-    pub cnf: Cnf<Config::Literal>,
+    pub cnf: Cnf<Config::Literal, Config::LiteralStorage>,
     pub selector: Config::VariableSelector,
     pub propagator: Config::Propagator,
 }
 
 impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
-    fn new(cnf: Cnf<Config::Literal>) -> Self {
-        let propagator = Config::Propagator::new(&cnf);
-        let assignment = Config::Assignment::new(cnf.num_vars);
+    fn new(cnf: Cnf<Config::Literal, Config::LiteralStorage>) -> Self {
+        let lits = &cnf.lits;
+        let propagator = Propagator::new(&cnf);
+        let assignment = Assignment::new(cnf.num_vars);
         let trail = Trail::new(&cnf);
-        let vars = cnf.vars();
-        let selector = Config::VariableSelector::new(cnf.num_vars, &vars);
+        let selector = Config::VariableSelector::new(cnf.num_vars, lits);
 
         Self {
             trail,
-            preprocessors: PreprocessorChain::new(),
             assignment,
             decision_level: 0,
             cnf,
@@ -52,17 +49,17 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
 
         let var = self.selector.pick(&self.assignment)?;
 
-        self.decision_level += 1;
+        self.decision_level = self.decision_level.wrapping_add(1);
 
         let mut true_branch = self.clone();
         let mut false_branch = self.clone();
 
         true_branch
             .assignment
-            .assign(Config::Literal::new(var, true));
+            .assign(Config::Literal::new(var.variable(), true));
         false_branch
             .assignment
-            .assign(Config::Literal::new(var, false));
+            .assign(Config::Literal::new(var.variable(), false));
 
         if let Some(solutions) = true_branch.solve() {
             return Some(solutions);

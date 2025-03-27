@@ -70,7 +70,7 @@ pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output =
     fn get_solutions(&self) -> Solutions;
 
     fn is_assigned(&self, i: Variable) -> bool {
-        self[i.try_into().unwrap_or(0)].is_assigned()
+        self[i as usize].is_assigned()
     }
 
     fn var_value(&self, i: Variable) -> Option<bool> {
@@ -82,22 +82,35 @@ pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output =
     fn literal_value(&self, l: impl Literal) -> Option<bool> {
         self.var_value(l.variable()).map(|b| b ^ l.is_negated())
     }
+
+    fn unassigned(&self) -> impl Iterator<Item = Variable> + '_ {
+        (0..).filter_map(move |i| {
+            if self[i].is_unassigned() {
+                #[allow(clippy::cast_possible_truncation)]
+                Some(i as Variable)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct VecAssignment(Vec<VarState>);
+pub struct VecAssignment {
+    states: Vec<VarState>,
+}
 
 impl Index<usize> for VecAssignment {
     type Output = VarState;
 
     fn index(&self, index: usize) -> &Self::Output {
-        unsafe { self.0.get_unchecked(index) }
+        unsafe { self.states.get_unchecked(index) }
     }
 }
 
 impl IndexMut<usize> for VecAssignment {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        unsafe { self.0.get_unchecked_mut(index) }
+        unsafe { self.states.get_unchecked_mut(index) }
     }
 }
 
@@ -159,7 +172,9 @@ impl Solutions {
 
 impl Assignment for VecAssignment {
     fn new(n: usize) -> Self {
-        Self(vec![VarState::Unassigned; n])
+        Self {
+            states: vec![VarState::Unassigned; n],
+        }
     }
 
     fn set(&mut self, var: Variable, b: bool) {
@@ -173,11 +188,13 @@ impl Assignment for VecAssignment {
     fn get_solutions(&self) -> Solutions {
         Solutions::new(
             &self
-                .0
+                .states
                 .iter()
                 .enumerate()
                 .filter_map(|(i, s)| {
-                    let i = i32::try_from(i).ok()?;
+                    #[allow(clippy::cast_possible_wrap)]
+                    #[allow(clippy::cast_possible_truncation)]
+                    let i = i as i32;
                     match s {
                         VarState::Assigned(true) => Some(i),
                         VarState::Assigned(false) => Some(-i),
@@ -189,7 +206,7 @@ impl Assignment for VecAssignment {
     }
 
     fn all_assigned(&self) -> bool {
-        self.0.iter().all(|s| s.is_assigned())
+        self.states.iter().all(|s| s.is_assigned())
     }
 }
 
@@ -203,6 +220,7 @@ impl Index<usize> for HashMapAssignment {
     type Output = VarState;
 
     fn index(&self, index: usize) -> &Self::Output {
+        #[allow(clippy::cast_possible_truncation)]
         self.map
             .get(&(index as Variable))
             .unwrap_or(&VarState::Unassigned)
@@ -211,6 +229,7 @@ impl Index<usize> for HashMapAssignment {
 
 impl IndexMut<usize> for HashMapAssignment {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        #[allow(clippy::cast_possible_truncation)]
         self.map
             .entry(index as Variable)
             .or_insert(VarState::Unassigned)
@@ -230,7 +249,7 @@ impl Assignment for HashMapAssignment {
     }
 
     fn unassign(&mut self, i: Variable) {
-        self.map.remove(&i);
+        self.map.insert(i, VarState::Unassigned);
     }
 
     fn get_solutions(&self) -> Solutions {
@@ -239,6 +258,7 @@ impl Assignment for HashMapAssignment {
                 .map
                 .iter()
                 .filter_map(|(&i, s)| {
+                    #[allow(clippy::cast_possible_wrap)]
                     let i = i as i32;
                     match s {
                         VarState::Assigned(true) => Some(i),

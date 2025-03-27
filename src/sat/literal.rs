@@ -1,5 +1,4 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use core::ops::{Neg, Not};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -27,6 +26,20 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
         let var = value.unsigned_abs();
         Self::new(var, polarity)
     }
+
+    fn index(self) -> usize {
+        let polarity = usize::from(self.polarity());
+        let var = self.variable() as usize;
+        var.wrapping_mul(2).wrapping_add(polarity)
+    }
+
+    #[must_use]
+    fn from_index(index: usize) -> Self {
+        let polarity = index % 2 != 0;
+        let var = index / 2;
+        #[allow(clippy::cast_possible_truncation)]
+        Self::new(var as Variable, polarity)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
@@ -46,7 +59,7 @@ impl Literal for PackedLiteral {
     }
 
     fn negated(self) -> Self {
-        Self(self.0 & 0x7FFF_FFFF)
+        Self(self.0 ^ (1 << 31))
     }
 }
 
@@ -84,11 +97,7 @@ pub struct DoubleLiteral(u32);
 
 impl Literal for DoubleLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
-        if polarity {
-            Self(var * 2)
-        } else {
-            Self(var * 2 + 1)
-        }
+        Self(var.wrapping_mul(2).wrapping_add(u32::from(polarity)))
     }
 
     fn variable(self) -> Variable {
@@ -100,43 +109,11 @@ impl Literal for DoubleLiteral {
     }
 
     fn negated(self) -> Self {
-        if self.polarity() {
-            Self(self.0 + 1)
-        } else {
-            Self(self.0 - 1)
-        }
+        Self(self.0 ^ 1)
     }
-}
 
-impl Neg for DoubleLiteral {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for DoubleLiteral {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Neg for &DoubleLiteral {
-    type Output = DoubleLiteral;
-
-    fn neg(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Not for &DoubleLiteral {
-    type Output = DoubleLiteral;
-
-    fn not(self) -> Self::Output {
-        self.negated()
+    fn index(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -145,13 +122,11 @@ pub struct NegativeLiteral(i32);
 
 impl Literal for NegativeLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
-        let var = i32::try_from(var).expect("negative literal variable overflowed");
+        #[allow(clippy::cast_possible_wrap)]
+        let var = var as i32;
 
-        if polarity {
-            Self(var)
-        } else {
-            Self(-var)
-        }
+        let p = i32::from(!polarity);
+        Self(var * (1 - 2 * p))
     }
 
     fn variable(self) -> Variable {
@@ -180,6 +155,36 @@ mod tests {
         assert_eq!(
             PackedLiteral::new(1, true).negated(),
             PackedLiteral::new(1, false)
+        );
+
+        assert_eq!(
+            StructLiteral::new(1, false).negated(),
+            StructLiteral::new(1, true)
+        );
+
+        assert_eq!(
+            StructLiteral::new(1, true).negated(),
+            StructLiteral::new(1, false)
+        );
+
+        assert_eq!(
+            DoubleLiteral::new(1, false).negated(),
+            DoubleLiteral::new(1, true)
+        );
+
+        assert_eq!(
+            DoubleLiteral::new(1, true).negated(),
+            DoubleLiteral::new(1, false)
+        );
+
+        assert_eq!(
+            NegativeLiteral::new(1, false).negated(),
+            NegativeLiteral::new(1, true)
+        );
+
+        assert_eq!(
+            NegativeLiteral::new(1, true).negated(),
+            NegativeLiteral::new(1, false)
         );
     }
 }

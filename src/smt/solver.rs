@@ -1,10 +1,16 @@
-use crate::sat::assignment::{Solutions, VecAssignment};
+use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::PackedLiteral;
-use crate::sat::solver::Solver;
+use crate::sat::literal::Literal;
+use crate::sat::phase_saving::SavedPhases;
+use crate::sat::propagation::WatchedLiterals;
+use crate::sat::restarter::Luby;
+use crate::sat::solver::SolverConfig;
+use crate::sat::solver::{LiteralStorage, Solver};
+use crate::sat::variable_selection::Vsids;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -13,19 +19,32 @@ pub enum TheoryConstraint {
     Eq(String, i32),
 }
 
-#[derive(Debug)]
-pub struct SmtSolver {
-    cnf: Cnf<PackedLiteral>,
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SmtSolver<L: Literal, S: LiteralStorage<L>> {
+    cnf: Cnf<L, S>,
     theory_constraints: Vec<TheoryConstraint>,
     var_mappings: HashMap<(String, i32), i32>,
-    // Track actual variable values for theory solving
     var_values: HashMap<String, i32>,
 }
 
-impl SmtSolver {
+#[derive(Debug, Clone)]
+struct LiteralConfig<L: Literal>(PhantomData<*const L>);
+
+impl<L: Literal> SolverConfig for LiteralConfig<L> {
+    type Assignment = VecAssignment;
+    type VariableSelector = Vsids;
+    type Literal = L;
+    type LiteralStorage = Vec<L>;
+    type Restarter = Luby;
+    type PhaseSelector = SavedPhases;
+    type Propagator = WatchedLiterals<L, Self::LiteralStorage, Self::Assignment>;
+}
+
+impl<L: Literal> SmtSolver<L, Vec<L>> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
-            cnf: Cnf::new(Vec::new()),
+            cnf: Cnf::<L, Vec<L>>::new(Vec::new()),
             theory_constraints: Vec::new(),
             var_mappings: HashMap::new(),
             var_values: HashMap::new(),
@@ -35,7 +54,6 @@ impl SmtSolver {
     pub fn add_theory_constraint(&mut self, constraint: TheoryConstraint) {
         match &constraint {
             TheoryConstraint::Leq(var, val) => {
-                // When adding x <= val, initialize x to val (tightest bound)
                 if let Some(current_val) = self.var_values.get(var) {
                     if *current_val > *val {
                         self.var_values.insert(var.clone(), *val);
@@ -45,7 +63,6 @@ impl SmtSolver {
                 }
             }
             TheoryConstraint::Geq(var, val) => {
-                // When adding x >= val, initialize x to val (tightest bound)
                 if let Some(current_val) = self.var_values.get(var) {
                     if *current_val < *val {
                         self.var_values.insert(var.clone(), *val);
@@ -55,12 +72,10 @@ impl SmtSolver {
                 }
             }
             TheoryConstraint::Eq(var, val) => {
-                // For equality, just set the value
                 self.var_values.insert(var.clone(), *val);
             }
         }
 
-        // Create variable mapping if needed
         let var_name = match &constraint {
             TheoryConstraint::Geq(var, _)
             | TheoryConstraint::Eq(var, _)
@@ -83,7 +98,7 @@ impl SmtSolver {
     }
     pub fn solve(&mut self) -> bool {
         let mut iterations = 0;
-        let max_iterations = 100; // Add a safety limit to prevent infinite loops
+        let max_iterations = 100;
 
         loop {
             iterations += 1;
@@ -92,7 +107,7 @@ impl SmtSolver {
                 return false;
             }
 
-            let mut solver: Cdcl = Solver::new(self.cnf.clone());
+            let mut solver: Cdcl<LiteralConfig<L>> = Solver::new(self.cnf.clone());
             let solution = solver.solve();
 
             if let Some(model) = solution {
