@@ -1,4 +1,6 @@
-pub trait Restarter {
+use std::fmt::Debug;
+
+pub trait Restarter: Debug + Clone {
     fn new() -> Self;
 
     fn restarts_in(&self) -> usize;

@@ -2,9 +2,9 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::{Literal, Variable};
-use crate::sat::solver::LiteralStorage;
 use crate::sat::trail::{Reason, Trail};
 use bit_vec::BitVec;
 use smallvec::SmallVec;
@@ -19,19 +19,19 @@ pub enum Conflict<T: Literal, S: LiteralStorage<T>> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct Analyser<T: Literal, S: LiteralStorage<T>> {
+pub struct Analyser<T: Literal, S: LiteralStorage<T>, const N: usize = 12> {
     seen: BitVec,
     path_c: usize,
-    to_bump: SmallVec<[T; 12]>,
+    to_bump: SmallVec<[T; N]>,
     data: std::marker::PhantomData<*const (T, S)>,
 }
 
-impl<T: Literal, S: LiteralStorage<T>> Analyser<T, S> {
+impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     pub(crate) fn new(num_vars: usize) -> Self {
         Self {
             seen: BitVec::from_elem(num_vars, false),
             path_c: 0,
-            to_bump: SmallVec::new(),
+            to_bump: SmallVec::with_capacity(12),
             data: std::marker::PhantomData,
         }
     }
@@ -106,7 +106,7 @@ impl<T: Literal, S: LiteralStorage<T>> Analyser<T, S> {
         trail: &Trail<T, S>,
         assignment: &impl Assignment,
         cref: usize,
-    ) -> (Conflict<T, S>, SmallVec<[T; 12]>) {
+    ) -> (Conflict<T, S>, SmallVec<[T; N]>) {
         let dl = trail.decision_level();
 
         let mut i = trail.len();

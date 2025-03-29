@@ -1,18 +1,26 @@
+use crate::sat::assignment::VecAssignment;
 use crate::sat::cdcl::Cdcl;
 use crate::sat::cnf::Cnf;
 use crate::sat::dimacs::parse_file;
 use crate::sat::dpll::Dpll;
 use crate::sat::literal::{NegativeLiteral, PackedLiteral};
+use crate::sat::phase_saving::AdaptiveSavedPhases;
 use crate::sat::preprocessing::{
     BlockedClauseElimination, BoundedVariableElimination, HyperBinaryResolution, Preprocessor,
     PreprocessorChain, PureLiteralElimination, SubsumptionElimination, TautologyElimination,
 };
-use crate::sat::solver::Solver;
+use crate::sat::propagation::{UnitSearch, WatchedLiterals};
+use crate::sat::restarter::Luby;
+use crate::sat::solver::{Solver, SolverConfig};
+use crate::sat::variable_selection::Vsids;
 
 mod nonogram;
 mod sat;
 mod smt;
 mod sudoku;
+
+// macro for generating a new type that implements SolverConfig
+// implements SolverConfig for the generated type
 
 fn main() {
     // let board = Board::new(EXAMPLE_NINE.iter().map(|r| r.to_vec()).collect());

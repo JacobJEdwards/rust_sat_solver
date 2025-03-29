@@ -6,7 +6,6 @@ use crate::sat::propagation::Propagator;
 use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
-use num::traits::WrappingAdd;
 
 #[derive(Debug, Clone)]
 pub struct Dpll<Config: SolverConfig + Clone = DefaultConfig> {

@@ -1,8 +1,9 @@
 use crate::sat::literal::Literal;
 use bit_vec::BitVec;
 use rand::{rng, Rng};
+use std::fmt::Debug;
 
-pub trait PhaseSelector {
+pub trait PhaseSelector: Debug + Clone {
     fn new(n: usize) -> Self;
     fn save(&mut self, lit: impl Literal);
     fn reset(&mut self);

@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use criterion::{criterion_group, criterion_main, Criterion};
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
@@ -12,114 +13,107 @@ use sat_solver::sat::preprocessing::{
 };
 use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Exponential, Geometric, Linear, Luby, Never, Restarter};
-use sat_solver::sat::solver::{LiteralStorage, Solver, SolverConfig};
-use sat_solver::sat::variable_selection::{FixedOrder, RandomOrder, VariableSelection, Vsids};
+use sat_solver::sat::solver::{solver_config, Solver, SolverConfig};
+use sat_solver::sat::variable_selection::{
+    FixedOrder, RandomOrder, VariableSelection, Vsids, VsidsHeap,
+};
 use sat_solver::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN};
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::hint::black_box;
-use std::marker::PhantomData;
 use std::time::Duration;
+use sat_solver::sat::clause_storage::LiteralStorage;
 
-#[derive(Debug, Clone)]
-struct AssignmentConfig<A: Assignment>(PhantomData<*const A>);
-
-impl<A: Assignment + Debug + Clone> SolverConfig for AssignmentConfig<A> {
-    type Assignment = A;
-    type VariableSelector = Vsids;
-    type Literal = PackedLiteral;
-    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
-    type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
-
-#[derive(Debug, Clone)]
-struct SelectorConfig<V: VariableSelection<SavedPhases, PackedLiteral>>(PhantomData<V>);
-
-impl<V: VariableSelection<SavedPhases, PackedLiteral> + Debug + Clone> SolverConfig
-    for SelectorConfig<V>
-{
-    type Assignment = VecAssignment;
-    type VariableSelector = V;
-    type Literal = PackedLiteral;
-    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
-    type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
-
-#[derive(Debug, Clone)]
-struct RestarterConfig<R: Restarter>(PhantomData<R>);
-impl<R: Restarter + Debug + Clone> SolverConfig for RestarterConfig<R> {
-    type Assignment = VecAssignment;
-    type VariableSelector = Vsids;
-    type Literal = PackedLiteral;
-    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
-    type Restarter = R;
-    type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
-
-#[derive(Debug, Clone)]
-
-struct LiteralConfig<L: Literal>(PhantomData<L>);
-impl<L: Literal + Debug> SolverConfig for LiteralConfig<L> {
-    type Assignment = VecAssignment;
-    type VariableSelector = Vsids;
-    type Literal = L;
-    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
-    type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
-
-#[derive(Debug, Clone)]
-struct PhaseSelectorConfig<P: PhaseSelector>(PhantomData<P>);
-
-impl<P: PhaseSelector + Debug + Clone> SolverConfig for PhaseSelectorConfig<P> {
-    type Assignment = VecAssignment;
-    type VariableSelector = Vsids;
-    type Literal = PackedLiteral;
-    type LiteralStorage = SmallVec<[Self::Literal; 8]>;
-    type Restarter = Luby;
-    type PhaseSelector = P;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
-
-#[derive(Debug, Clone)]
-struct PropagatorConfig<Prop: Propagator<L, S, A>, L: Literal, S: LiteralStorage<L>, A: Assignment>(
-    PhantomData<(Prop, L, S, A)>,
+solver_config! (
+    <A: Assignment>
+    AssignmentConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = A,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, A>,
+        Restarter = Luby,
+        PhaseSelector = SavedPhases
+    }
 );
 
-impl<
-        Prop: Propagator<L, S, A> + Debug + Clone,
-        L: Literal,
-        S: LiteralStorage<L>,
-        A: Assignment + Debug + Clone,
-    > SolverConfig for PropagatorConfig<Prop, L, S, A>
-{
-    type Assignment = A;
-    type VariableSelector = Vsids;
-    type Literal = L;
-    type LiteralStorage = S;
-    type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
-    type Propagator = Prop;
-}
+solver_config!(
+    <V: VariableSelection<SavedPhases, PackedLiteral>>
+    SelectorConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = V,
+        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        Restarter = Luby,
+        PhaseSelector = SavedPhases
+    }
+);
 
-#[derive(Debug, Clone)]
-struct LiteralStorageConfig<S: LiteralStorage<PackedLiteral>>(PhantomData<S>);
+solver_config!(
+    <R: Restarter>
+    RestarterConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        Restarter = R,
+        PhaseSelector = SavedPhases
+    }
+);
 
-impl<S: LiteralStorage<PackedLiteral>> SolverConfig for LiteralStorageConfig<S> {
-    type Assignment = VecAssignment;
-    type VariableSelector = Vsids;
-    type Literal = PackedLiteral;
-    type LiteralStorage = S;
-    type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
-    type Propagator = WatchedLiterals<Self::Literal, Self::LiteralStorage, Self::Assignment>;
-}
+solver_config!(
+    <L: Literal>
+    LiteralConfig {
+        Literal = L,
+        LiteralStorage = SmallVec<[L; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<L, SmallVec<[L; 8]>, VecAssignment>,
+        Restarter = Luby,
+        PhaseSelector = SavedPhases
+    }
+);
+
+solver_config!(
+    <P: PhaseSelector>
+    PhaseSelectorConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        Restarter = Luby,
+        PhaseSelector = P
+    }
+);
+
+solver_config!(
+    <Prop: Propagator<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>>
+    PropagatorConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = Prop,
+        Restarter = Luby,
+        PhaseSelector = SavedPhases
+    }
+);
+
+solver_config!(
+    <S: LiteralStorage<PackedLiteral>>
+    LiteralStorageConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = S,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<PackedLiteral, S, VecAssignment>,
+        Restarter = Luby,
+        PhaseSelector = SavedPhases
+    }
+);
 
 fn bench_sudoku(c: &mut Criterion) {
     let board = EXAMPLE_SIXTEEN
@@ -260,6 +254,59 @@ fn bench_3sat(c: &mut Criterion) {
 }
 
 fn bench_graph_colouring(c: &mut Criterion) {
+    let mut group = c.benchmark_group("graph_colouring - Variable selection");
+    group.sample_size(100);
+    group.measurement_time(Duration::from_secs(20));
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    group.bench_function("Vsids heap", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<VsidsHeap>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Vsids", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<Vsids>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Fixed Order", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<FixedOrder>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Random Order", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<RandomOrder>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.finish();
+
     let mut group = c.benchmark_group("graph_colouring - literal layout");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
@@ -403,38 +450,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
 
     group.finish();
 
-    let mut group = c.benchmark_group("graph_colouring - Variable selection");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    group.bench_function("Vsids", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<Vsids>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Fixed Order", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<FixedOrder>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Random Order", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<RandomOrder>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
 
     let mut group = c.benchmark_group("graph_colouring - Assignment type");
     group.sample_size(100);
@@ -553,9 +568,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
                 let mut state: Cdcl<
                     PropagatorConfig<
                         WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-                        PackedLiteral,
-                        SmallVec<[PackedLiteral; 8]>,
-                        VecAssignment,
                     >,
                 > = Solver::new(cnf.clone());
                 black_box(state.solve());
@@ -569,9 +581,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
                 let mut state: Cdcl<
                     PropagatorConfig<
                         UnitSearch<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-                        PackedLiteral,
-                        SmallVec<[PackedLiteral; 8]>,
-                        VecAssignment,
                     >,
                 > = Solver::new(cnf.clone());
                 black_box(state.solve());

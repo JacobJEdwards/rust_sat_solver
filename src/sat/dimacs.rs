@@ -1,8 +1,8 @@
 // a parser for the DIMACS format
 
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use crate::sat::solver::LiteralStorage;
 use std::io::{self, BufRead};
 
 // panics docs

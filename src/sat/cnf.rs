@@ -2,10 +2,9 @@
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
 use crate::sat::assignment::Solutions;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::{Literal, PackedLiteral, Variable};
-use crate::sat::solver::LiteralStorage;
 use itertools::Itertools;
-use num::traits::WrappingAdd;
 use smallvec::SmallVec;
 use std::ops::{Index, IndexMut};
 
@@ -35,12 +34,18 @@ impl<T: Literal, S: LiteralStorage<T>> IndexMut<usize> for Cnf<T, S> {
 
 impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
     pub fn new(clauses: Vec<Vec<i32>>) -> Self {
+        let clause_len = clauses.len();
         let (clauses, num_vars, vars, literals) = clauses
             .into_iter()
             .filter(|clause| !clause.is_empty())
             .map(Clause::from)
             .fold(
-                (Vec::new(), 0u32, Vec::new(), Vec::new()),
+                (
+                    Vec::with_capacity(clause_len),
+                    0u32,
+                    Vec::with_capacity(clause_len * 2),
+                    Vec::with_capacity(clause_len * 2),
+                ),
                 |(mut acc_clauses, mut max_var, mut acc_vars, mut acc_literals), clause| unsafe {
                     let clause_max_var = clause
                         .iter()
@@ -68,6 +73,7 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
     }
 
     pub fn remove(&mut self, idx: usize) {
+        // cant use swap remove as it would invalidate the indices
         self.clauses.remove(idx);
     }
 

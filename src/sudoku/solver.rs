@@ -1,4 +1,3 @@
-use crate::sat;
 use crate::sat::assignment::Solutions;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::PackedLiteral;
@@ -408,6 +407,7 @@ impl Sudoku {
             for col in 1..=size {
                 for num in 1..=size {
                     let var = Variable::new(row, col, num);
+                    #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
                     let encoded = var.encode(self.size) as i32;
                     if solutions.check(encoded) {
                         board[row - 1][col - 1] = num;
@@ -440,7 +440,7 @@ impl Sudoku {
             .chain(pre_filled_clauses)
             .collect();
 
-        sat::cnf::Cnf::new(clauses)
+        Cnf::new(clauses)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Vec<usize>> {

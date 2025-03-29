@@ -1,8 +1,7 @@
 use crate::sat::clause::Clause;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::Literal;
-use crate::sat::solver::LiteralStorage;
 use itertools::Itertools;
-use num::traits::WrappingAdd;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -55,7 +54,7 @@ impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PreprocessorChain<
 pub struct PureLiteralElimination;
 
 impl PureLiteralElimination {
-    fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> HashSet<L> {
+    pub fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> HashSet<L> {
         let mut pures = HashSet::new();
         let mut impures = HashSet::new();
 

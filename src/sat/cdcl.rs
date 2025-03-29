@@ -39,7 +39,7 @@ pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
 
 impl<Config: SolverConfig> Cdcl<Config> {
     pub fn all_assigned(&self) -> bool {
-        self.assignment.all_assigned()
+        self.trail.len() == self.cnf.num_vars
     }
 
     fn should_restart(&mut self) -> bool {
@@ -201,8 +201,8 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 mod tests {
     use super::*;
     use crate::sat::clause::Clause;
+    use crate::sat::clause_storage::LiteralStorage;
     use crate::sat::literal::PackedLiteral;
-    use crate::sat::solver::LiteralStorage;
 
     fn get_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
         Cnf {

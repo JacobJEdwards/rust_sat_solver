@@ -1,6 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::{Literal, PackedLiteral};
-use crate::sat::solver::LiteralStorage;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
 use smallvec::SmallVec;

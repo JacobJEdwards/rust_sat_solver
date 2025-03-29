@@ -56,7 +56,9 @@ impl From<Option<bool>> for VarState {
     }
 }
 
-pub trait Assignment: Index<usize, Output = VarState> + IndexMut<usize, Output = VarState> {
+pub trait Assignment:
+    Index<usize, Output = VarState> + IndexMut<usize, Output = VarState> + Debug + Clone
+{
     fn new(n: usize) -> Self;
 
     fn set(&mut self, var: Variable, b: bool);

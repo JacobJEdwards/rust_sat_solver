@@ -2,17 +2,19 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use crate::sat::literal::Variable;
-use crate::sat::solver::LiteralStorage;
+use crate::sat::preprocessing::PureLiteralElimination;
 use crate::sat::trail::{Reason, Trail};
 use itertools::Itertools;
 use smallvec::SmallVec;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment> {
+pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + Clone {
     fn new(cnf: &Cnf<L, S>) -> Self;
 
     fn add_clause(&mut self, clause: &Clause<L, S>, idx: usize);
@@ -35,8 +37,8 @@ pub struct WatchedLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment, cons
     PhantomData<*const (L, S, A)>,
 );
 
-impl<L: Literal, S: LiteralStorage<L> + std::fmt::Debug, A: Assignment, const N: usize>
-    Propagator<L, S, A> for WatchedLiterals<L, S, A, N>
+impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Propagator<L, S, A>
+    for WatchedLiterals<L, S, A, N>
 {
     fn new(cnf: &Cnf<L, S>) -> Self {
         let st = vec![SmallVec::with_capacity(N); cnf.num_vars * 2];
@@ -81,7 +83,7 @@ impl<L: Literal, S: LiteralStorage<L> + std::fmt::Debug, A: Assignment, const N:
     }
 }
 
-impl<L: Literal, S: LiteralStorage<L> + std::fmt::Debug, A: Assignment, const N: usize>
+impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
     WatchedLiterals<L, S, A, N>
 {
     pub fn propagate_watch(
@@ -315,5 +317,51 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitSearch<L, S, A> {
         unassigned.map_or(UnitSearchResult::Unsat(idx), |lit| {
             UnitSearchResult::Unit(lit)
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UnitPropagationWithPureLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment>(
+    UnitSearch<L, S, A>,
+);
+
+impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A>
+    for UnitPropagationWithPureLiterals<L, S, A>
+{
+    fn new(cnf: &Cnf<L, S>) -> Self {
+        Self(UnitSearch::new(cnf))
+    }
+
+    fn add_clause(&mut self, clause: &Clause<L, S>, idx: usize) {
+        self.0.add_clause(clause, idx);
+    }
+
+    fn propagate(
+        &mut self,
+        trail: &mut Trail<L, S>,
+        assignment: &mut A,
+        cnf: &mut Cnf<L, S>,
+    ) -> Option<usize> {
+        loop {
+            if let Some(idx) = self.0.propagate(trail, assignment, cnf) {
+                return Some(idx);
+            }
+
+            Self::find_pure_literals(trail, cnf);
+
+            if trail.curr_idx == trail.len() {
+                return None;
+            }
+        }
+    }
+}
+
+impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitPropagationWithPureLiterals<L, S, A> {
+    fn find_pure_literals(trail: &mut Trail<L, S>, cnf: &Cnf<L, S>) {
+        let pures = PureLiteralElimination::find_pures(&cnf.clauses);
+
+        for &lit in &pures {
+            Self::add_propagation(lit, 0, trail);
+        }
     }
 }

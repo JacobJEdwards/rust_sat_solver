@@ -2,6 +2,7 @@
 pub mod assignment;
 pub mod cdcl;
 pub mod clause;
+pub mod clause_storage;
 pub mod cnf;
 pub mod conflict_analysis;
 pub mod dimacs;

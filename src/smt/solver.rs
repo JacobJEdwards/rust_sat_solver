@@ -1,13 +1,14 @@
 use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use crate::sat::phase_saving::SavedPhases;
 use crate::sat::propagation::WatchedLiterals;
 use crate::sat::restarter::Luby;
+use crate::sat::solver::Solver;
 use crate::sat::solver::SolverConfig;
-use crate::sat::solver::{LiteralStorage, Solver};
 use crate::sat::variable_selection::Vsids;
 use std::collections::HashMap;
 use std::marker::PhantomData;
