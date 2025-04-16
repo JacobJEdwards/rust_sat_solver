@@ -1,10 +1,11 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use crate::sat::literal::{Literal, Variable};
+use crate::sat::solver::Solutions;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default, Hash, PartialOrd, Ord)]
 pub enum VarState {
@@ -26,18 +27,12 @@ impl VarState {
 
     #[must_use]
     pub const fn is_true(self) -> bool {
-        match self {
-            Self::Assigned(b) => b,
-            Self::Unassigned => false,
-        }
+        matches!(self, Self::Assigned(true))
     }
 
     #[must_use]
     pub const fn is_false(self) -> bool {
-        match self {
-            Self::Assigned(b) => !b,
-            Self::Unassigned => false,
-        }
+        matches!(self, Self::Assigned(false))
     }
 }
 
@@ -62,6 +57,8 @@ pub trait Assignment:
     fn new(n: usize) -> Self;
 
     fn set(&mut self, var: Variable, b: bool);
+
+    fn reset(&mut self);
 
     fn assign(&mut self, l: impl Literal) {
         self.set(l.variable(), l.polarity());
@@ -116,62 +113,6 @@ impl IndexMut<usize> for VecAssignment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Solutions(Vec<i32>);
-
-impl Index<usize> for Solutions {
-    type Output = i32;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl IndexMut<usize> for Solutions {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
-impl Solutions {
-    #[must_use]
-    pub fn new(s: &[i32]) -> Self {
-        Self(s.iter().filter(|i| **i != 0).copied().collect())
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &i32> {
-        self.0.iter()
-    }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut i32> {
-        self.0.iter_mut()
-    }
-
-    #[must_use]
-    pub fn check(&self, i: i32) -> bool {
-        self.0.contains(&i)
-    }
-
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    #[must_use]
-    pub fn contains(&self, i: i32) -> bool {
-        self.0.contains(&i)
-    }
-}
-
 impl Assignment for VecAssignment {
     fn new(n: usize) -> Self {
         Self {
@@ -181,6 +122,10 @@ impl Assignment for VecAssignment {
 
     fn set(&mut self, var: Variable, b: bool) {
         self[var as usize] = VarState::Assigned(b);
+    }
+
+    fn reset(&mut self) {
+        self.states.fill(VarState::Unassigned);
     }
 
     fn unassign(&mut self, i: Variable) {
@@ -214,7 +159,7 @@ impl Assignment for VecAssignment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HashMapAssignment {
-    map: HashMap<Variable, VarState>,
+    map: FxHashMap<Variable, VarState>,
     num_vars: usize,
 }
 
@@ -241,13 +186,17 @@ impl IndexMut<usize> for HashMapAssignment {
 impl Assignment for HashMapAssignment {
     fn new(num_vars: usize) -> Self {
         Self {
-            map: HashMap::default(),
+            map: FxHashMap::default(),
             num_vars,
         }
     }
 
     fn set(&mut self, var: Variable, b: bool) {
         self.map.insert(var, VarState::Assigned(b));
+    }
+
+    fn reset(&mut self) {
+        self.map.clear();
     }
 
     fn unassign(&mut self, i: Variable) {

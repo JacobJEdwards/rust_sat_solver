@@ -26,6 +26,12 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
         let var = value.unsigned_abs();
         Self::new(var, polarity)
     }
+    
+    fn to_i32(&self) -> i32 {
+        let var = self.variable() as i32;
+        let polarity = if self.polarity() { 1 } else { -1 };
+        var * polarity
+    }
 
     fn index(self) -> usize {
         let polarity = usize::from(self.polarity());
@@ -45,21 +51,24 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct PackedLiteral(u32);
 
+const VAR_MASK: u32 = 0x7FFF_FFFF;
+const LSHIFT: u32 = 31;
+
 impl Literal for PackedLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
-        Self(var & 0x7FFF_FFFF | ((u32::from(polarity)) << 31))
+        Self(var & VAR_MASK | ((u32::from(polarity)) << LSHIFT))
     }
 
     fn variable(self) -> Variable {
-        self.0 & 0x7FFF_FFFF
+        self.0 & VAR_MASK
     }
 
     fn polarity(self) -> bool {
-        (self.0 >> 31) != 0
+        (self.0 >> LSHIFT) != 0
     }
 
     fn negated(self) -> Self {
-        Self(self.0 ^ (1 << 31))
+        Self(self.0 ^ (1 << LSHIFT))
     }
 }
 

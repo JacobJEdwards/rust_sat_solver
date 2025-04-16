@@ -7,6 +7,8 @@ pub trait Restarter: Debug + Clone {
     fn increment_restarts_in(&mut self);
     fn restart(&mut self);
 
+    fn num_restarts(&self) -> usize;
+
     fn should_restart(&mut self) -> bool {
         if self.restarts_in() == 0 {
             self.restart();
@@ -64,19 +66,21 @@ impl Restarter for Luby {
         self.restarts_interval = Self::luby(self.restarts_next);
         self.restarts_next = self.restarts_next.wrapping_add(1);
     }
+
+    fn num_restarts(&self) -> usize {
+        self.restarts
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Geometric {
+pub struct Geometric<const N: usize> {
     restarts: usize,
     restarts_in: usize,
     restarts_interval: usize,
     restarts_next: usize,
 }
 
-impl Geometric {}
-
-impl Restarter for Geometric {
+impl<const N: usize> Restarter for Geometric<N> {
     fn new() -> Self {
         Self {
             restarts: 0,
@@ -97,7 +101,11 @@ impl Restarter for Geometric {
     fn restart(&mut self) {
         self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval = self.restarts_interval.wrapping_mul(2);
+        self.restarts_interval = self.restarts_interval.wrapping_mul(N);
+    }
+
+    fn num_restarts(&self) -> usize {
+        self.restarts
     }
 
     fn should_restart(&mut self) -> bool {
@@ -112,20 +120,18 @@ impl Restarter for Geometric {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fixed {
+pub struct Fixed<const N: usize> {
     restarts: usize,
     restarts_in: usize,
     restarts_interval: usize,
 }
 
-impl Fixed {}
-
-impl Restarter for Fixed {
+impl<const N: usize> Restarter for Fixed<N> {
     fn new() -> Self {
         Self {
             restarts: 0,
             restarts_in: 0,
-            restarts_interval: 100,
+            restarts_interval: N,
         }
     }
 
@@ -140,6 +146,10 @@ impl Restarter for Fixed {
     fn restart(&mut self) {
         self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
+    }
+
+    fn num_restarts(&self) -> usize {
+        self.restarts
     }
 }
 
@@ -159,26 +169,28 @@ impl Restarter for Never {
 
     fn restart(&mut self) {}
 
+    fn num_restarts(&self) -> usize {
+        0
+    }
+
     fn should_restart(&mut self) -> bool {
         false
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Linear {
+pub struct Linear<const N: usize> {
     restarts: usize,
     restarts_in: usize,
     restarts_interval: usize,
 }
 
-impl Linear {}
-
-impl Restarter for Linear {
+impl<const N: usize> Restarter for Linear<N> {
     fn new() -> Self {
         Self {
             restarts: 0,
             restarts_in: 0,
-            restarts_interval: 100,
+            restarts_interval: N,
         }
     }
 
@@ -193,39 +205,10 @@ impl Restarter for Linear {
     fn restart(&mut self) {
         self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval = self.restarts_interval.wrapping_add(100);
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Exponential {
-    restarts: usize,
-    restarts_in: usize,
-    restarts_interval: usize,
-}
-
-impl Exponential {}
-
-impl Restarter for Exponential {
-    fn new() -> Self {
-        Self {
-            restarts: 0,
-            restarts_in: 0,
-            restarts_interval: 100,
-        }
+        self.restarts_interval = self.restarts_interval.wrapping_add(N);
     }
 
-    fn restarts_in(&self) -> usize {
-        self.restarts_in
-    }
-
-    fn increment_restarts_in(&mut self) {
-        self.restarts_in = self.restarts_in.wrapping_sub(1);
-    }
-
-    fn restart(&mut self) {
-        self.restarts = self.restarts.wrapping_add(1);
-        self.restarts_in = self.restarts_interval;
-        self.restarts_interval = self.restarts_interval.wrapping_mul(2);
+    fn num_restarts(&self) -> usize {
+        self.restarts
     }
 }

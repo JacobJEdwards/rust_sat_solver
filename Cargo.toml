@@ -4,17 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.25"
 rand = "0.9.0"
 ordered-float = "5.0.0"
 smallvec = { version = "1.14.0", features = ["const_generics", "const_new"] }
-num = "0.4.3"
 itertools = "0.14.0"
 bit-vec = "0.8.0"
-dary_heap = "0.3.7"
+tikv-jemallocator = "0.6.0"
+fastrand = "2.3.0"
+rustc-hash = "2.1.1"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+
+[build]
+rustflags = ["-C", "target-cpu=native", "-C", "opt-level=3"]
+
 
 [[bench]]
 name = "bench"

@@ -29,6 +29,11 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
     fn add_propagation(lit: L, clause_idx: usize, trail: &mut Trail<L, S>) {
         trail.push(lit, trail.decision_level(), Reason::Clause(clause_idx));
     }
+    
+    fn cleanup_learnt(
+        &mut self,
+        learnt_idx: usize,
+    );
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -41,10 +46,11 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
     for WatchedLiterals<L, S, A, N>
 {
     fn new(cnf: &Cnf<L, S>) -> Self {
-        let st = vec![SmallVec::with_capacity(N); cnf.num_vars * 2];
+        let st = vec![SmallVec::new(); cnf.num_vars * 2];
 
         let mut wl = Self(st, PhantomData);
-        for (i, clause) in cnf.iter().enumerate().filter(|(_, c)| !c.is_unit()) {
+        
+        for (i, clause) in cnf.iter().enumerate().filter(|(_, c)| !c.is_unit() && !c.is_deleted()) {
             wl.add_clause(clause, i);
         }
 
@@ -52,6 +58,10 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
     }
 
     fn add_clause(&mut self, clause: &Clause<L, S>, idx: usize) {
+        if clause.len() < 2  || clause.is_deleted() {
+            return;
+        }
+        
         let a = clause[0];
         let b = clause[1];
 
@@ -80,6 +90,12 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
         }
 
         None
+    }
+
+    fn cleanup_learnt(&mut self, learnt_idx: usize) {
+        for i in &mut self.0 {
+            i.retain(|&mut j| j < learnt_idx);
+        }
     }
 }
 
@@ -163,7 +179,7 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
         match Self::find_new_watch(clause_idx, cnf, assignment) {
             Some(new_lit_idx) => self.handle_new_watch(clause_idx, new_lit_idx, cnf),
             None => Self::add_propagation(other_lit, clause_idx, trail),
-        };
+        }
     }
 
     fn find_new_watch(clause_idx: usize, cnf: &Cnf<L, S>, assignment: &A) -> Option<usize> {
@@ -274,6 +290,8 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A> for Un
             }
         }
     }
+
+    fn cleanup_learnt(&mut self, _: usize) {}
 }
 
 enum UnitSearchResult<L: Literal> {
@@ -354,6 +372,8 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A>
             }
         }
     }
+
+    fn cleanup_learnt(&mut self, _: usize) {}
 }
 
 impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitPropagationWithPureLiterals<L, S, A> {

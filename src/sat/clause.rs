@@ -1,8 +1,11 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::{Literal, PackedLiteral};
+use crate::sat::trail::Trail;
+use bit_vec::BitVec;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -14,7 +17,14 @@ pub struct Clause<L: Literal = PackedLiteral, S: LiteralStorage<L> = SmallVec<[L
     pub lbd: u32,
     pub deleted: bool,
     pub is_learnt: bool,
+    pub activity: OrderedFloat<f64>,
     data: PhantomData<*const L>,
+}
+
+impl<L: Literal, S: LiteralStorage<L>> AsRef<[L]> for Clause<L, S> {
+    fn as_ref(&self) -> &[L] {
+        self.literals.as_ref()
+    }
 }
 
 impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
@@ -24,14 +34,15 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
             lbd: 0,
             deleted: false,
             is_learnt: false,
+            activity: OrderedFloat::from(0.0),
             data: PhantomData,
         }
     }
 }
 
-impl<T: Literal + Hash + Eq, S: LiteralStorage<T>> Clause<T, S> {
+impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     #[must_use]
-    pub fn new(literals: &[T]) -> Self {
+    pub fn new(literals: &[L]) -> Self {
         let literals = literals.iter().unique().copied().collect();
 
         Self {
@@ -39,19 +50,20 @@ impl<T: Literal + Hash + Eq, S: LiteralStorage<T>> Clause<T, S> {
             lbd: 0,
             deleted: false,
             is_learnt: false,
+            activity: OrderedFloat::from(0.0),
             data: PhantomData,
         }
     }
 
     #[must_use]
-    pub fn resolve(&self, other: &Self, pivot: T) -> Self {
+    pub fn resolve(&self, other: &Self, pivot: L) -> Self {
         if !self.literals.iter().contains(&pivot)
             || !other.literals.iter().contains(&pivot.negated())
         {
             return self.clone();
         }
 
-        let mut resolved_literals: HashSet<T> = HashSet::new();
+        let mut resolved_literals: HashSet<L> = HashSet::new();
 
         for &lit in self.literals.iter() {
             if lit != pivot {
@@ -121,7 +133,7 @@ impl<T: Literal + Hash + Eq, S: LiteralStorage<T>> Clause<T, S> {
         None
     }
 
-    pub fn push(&mut self, literal: T) {
+    pub fn push(&mut self, literal: L) {
         if !self.literals.iter().contains(&literal) {
             self.literals.push(literal);
         }
@@ -146,11 +158,11 @@ impl<T: Literal + Hash + Eq, S: LiteralStorage<T>> Clause<T, S> {
         self.literals.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn iter(&self) -> impl Iterator<Item = &L> {
         self.literals.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut L> {
         self.literals.iter_mut()
     }
 
@@ -179,6 +191,52 @@ impl<T: Literal + Hash + Eq, S: LiteralStorage<T>> Clause<T, S> {
 
     pub fn remove_literal(&mut self, idx: usize) {
         self.literals.swap_remove(idx);
+    }
+
+    #[allow(clippy::cast_possible_truncation,clippy::cast_sign_loss)]
+    pub fn calculate_lbd(&mut self, trail: &Trail<L, S>) {
+        let max_level_in_clause = self
+            .literals
+            .iter()
+            .map(|lit| trail.level(lit.variable()))
+            .max()
+            .unwrap_or(0);
+
+        let mut levels_seen = BitVec::from_elem(max_level_in_clause + 1, false);
+        let mut count = 0;
+
+        for &lit in self.literals.iter() {
+            let level = trail.level(lit.variable());
+            if level > 0 && !levels_seen[level] {
+                levels_seen.set(level, true);
+                count += 1;
+            }
+        }
+
+        if count == 0
+            && !self.is_empty()
+            && self.literals.iter().any(|l| trail.level(l.variable()) == 0)
+        {
+            self.lbd = 1;
+        } else {
+            self.lbd = count as u32;
+        }
+
+        if self.is_learnt && !self.is_empty() && self.lbd == 0 {
+            self.lbd = 1;
+        }
+    }
+
+    pub fn bump_activity(&mut self, increment: f64) {
+        self.activity += increment;
+    }
+
+    pub fn decay_activity(&mut self, factor: f64) {
+        self.activity *= factor;
+    }
+
+    pub const fn activity(&self) -> f64 {
+        self.activity.0
     }
 }
 
@@ -224,6 +282,7 @@ impl<L: Literal, S: LiteralStorage<L>> From<Vec<L>> for Clause<L, S> {
             lbd: 0,
             deleted: false,
             is_learnt: false,
+            activity: OrderedFloat::from(0.0),
             data: PhantomData,
         }
     }
@@ -236,6 +295,7 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
             lbd: 0,
             deleted: false,
             is_learnt: false,
+            activity: OrderedFloat::from(0.0),
             data: PhantomData,
         }
     }

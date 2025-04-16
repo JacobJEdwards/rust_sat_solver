@@ -1,9 +1,9 @@
-use crate::sat::assignment::{Assignment, Solutions};
+use crate::sat::assignment::Assignment;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use crate::sat::propagation::Propagator;
-use crate::sat::solver::{DefaultConfig, Solver, SolverConfig};
+use crate::sat::solver::{DefaultConfig, SolutionStats, Solutions, Solver, SolverConfig};
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
 
@@ -23,7 +23,7 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
         let propagator = Propagator::new(&cnf);
         let assignment = Assignment::new(cnf.num_vars);
         let trail = Trail::new(&cnf);
-        let selector = Config::VariableSelector::new(cnf.num_vars, lits);
+        let selector = Config::VariableSelector::new(cnf.num_vars, lits, &cnf.clauses);
 
         Self {
             trail,
@@ -69,6 +69,15 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
 
     fn solutions(&self) -> Solutions {
         self.assignment.get_solutions()
+    }
+
+    fn stats(&self) -> SolutionStats {
+        SolutionStats {
+            conflicts: 0,
+            decisions: self.decision_level,
+            propagations: self.cnf.num_vars - self.decision_level,
+            restarts: 0,
+        }
     }
 }
 

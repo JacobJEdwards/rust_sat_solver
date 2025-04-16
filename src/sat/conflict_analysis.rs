@@ -24,6 +24,8 @@ pub struct Analyser<T: Literal, S: LiteralStorage<T>, const N: usize = 12> {
     path_c: usize,
     to_bump: SmallVec<[T; N]>,
     data: std::marker::PhantomData<*const (T, S)>,
+
+    pub count: usize,
 }
 
 impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
@@ -33,6 +35,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
             path_c: 0,
             to_bump: SmallVec::with_capacity(12),
             data: std::marker::PhantomData,
+            count: 0,
         }
     }
 
@@ -72,7 +75,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
                 self.to_bump.push(lit);
                 c.push(lit);
 
-                if trail.lit_to_level[var as usize] >= trail.decision_level() {
+                if trail.level(var) >= trail.decision_level() {
                     self.path_c = self.path_c.wrapping_add(1);
                 }
             }
@@ -107,6 +110,8 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         assignment: &impl Assignment,
         cref: usize,
     ) -> (Conflict<T, S>, SmallVec<[T; N]>) {
+        self.count += 1;
+
         let dl = trail.decision_level();
 
         let mut i = trail.len();
@@ -116,7 +121,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
             let var = lit.variable();
             self.set_seen(var);
             self.to_bump.push(lit);
-            if trail.lit_to_level[var as usize] >= dl {
+            if trail.level(var) >= dl {
                 self.path_c = self.path_c.wrapping_add(1);
             }
         }
@@ -153,7 +158,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
 
             for k in 0..clause.len() {
                 let var = clause[k].variable();
-                if trail.lit_to_level[var as usize] == dl {
+                if trail.level(var) == dl {
                     let pos = trail.lit_to_pos[var as usize];
                     if pos > max_pos {
                         max_pos = pos;

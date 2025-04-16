@@ -13,6 +13,7 @@ pub trait LiteralStorage<L: Literal>:
     + IndexMut<usize, Output = L>
     + Extend<L>
     + Debug
+    + AsRef<[L]>
 {
     fn push(&mut self, literal: L);
     fn len(&self) -> usize;
@@ -71,6 +72,10 @@ impl<L: Literal> LiteralStorage<L> for Vec<L> {
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
         self.as_mut_slice().get_unchecked_mut(index)
     }
+
+    fn swap_remove(&mut self, index: usize) -> L {
+        self.swap_remove(index)
+    }
 }
 
 impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
@@ -112,5 +117,9 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
         self.as_mut_slice().get_unchecked_mut(index)
+    }
+
+    fn swap_remove(&mut self, index: usize) -> L {
+        self.swap_remove(index)
     }
 }

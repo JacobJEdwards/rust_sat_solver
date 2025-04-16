@@ -1,6 +1,8 @@
-use crate::sat::assignment::Solutions;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::PackedLiteral;
+use crate::sat::literal::{Literal, PackedLiteral};
+use crate::sat::solver::Solutions;
+use std::num::{NonZero, NonZeroI32};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board(Vec<Vec<usize>>);
@@ -408,7 +410,7 @@ impl Sudoku {
                 for num in 1..=size {
                     let var = Variable::new(row, col, num);
                     #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-                    let encoded = var.encode(self.size) as i32;
+                    let encoded = NonZeroI32::new(var.encode(self.size) as i32).unwrap();
                     if solutions.check(encoded) {
                         board[row - 1][col - 1] = num;
                     }
@@ -422,7 +424,7 @@ impl Sudoku {
     }
 
     #[must_use]
-    pub fn to_cnf(&self) -> Cnf<PackedLiteral, Vec<PackedLiteral>> {
+    pub fn to_cnf<L: Literal, S: LiteralStorage<L>>(&self) -> Cnf<L, S> {
         let size = self.size as usize;
         let block_size = self.size.block_size();
 

@@ -4,9 +4,12 @@ use crate::sat::assignment::Assignment;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use itertools::Itertools;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
+use itertools::Itertools;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+use crate::sat::solver::Solutions;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
 pub enum Reason {
@@ -27,9 +30,10 @@ pub struct Part<L: Literal> {
 pub struct Trail<L: Literal, S: LiteralStorage<L>> {
     t: Vec<Part<L>>,
     pub curr_idx: usize,
-    pub lit_to_level: Vec<usize>,
+    lit_to_level: Vec<usize>,
     pub lit_to_pos: Vec<usize>,
     marker: PhantomData<*const S>,
+    cnf_non_learnt_idx: usize,
 }
 
 impl<L: Literal, S: LiteralStorage<L>> Index<usize> for Trail<L, S> {
@@ -68,11 +72,24 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
     }
 
     #[must_use]
+    pub fn level(&self, v: u32) -> usize {
+        unsafe {
+            *self.lit_to_level.get_unchecked(v as usize)
+        }
+    }
+    
+    #[must_use] pub fn solutions(&self) -> Solutions {
+        let literals = self.t.iter().map(|p| p.lit.to_i32()).collect_vec();
+        
+        Solutions::new(&literals)
+    }
+
+    #[must_use]
     pub fn new(cnf: &Cnf<L, S>) -> Self {
         let num_vars = cnf.num_vars;
         let mut lit_to_pos = vec![0; num_vars];
 
-        let mut vec = Vec::with_capacity(cnf.num_vars);
+        let mut vec = Vec::with_capacity(num_vars);
 
         vec.extend(
             cnf.iter()
@@ -98,6 +115,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
             lit_to_level: vec![0; cnf.num_vars],
             lit_to_pos,
             marker: PhantomData,
+            cnf_non_learnt_idx: cnf.non_learnt_idx,
         }
     }
 
@@ -108,6 +126,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
             }
         }
 
+        let pos = self.t.len();
         self.t.push(Part {
             lit,
             decision_level,
@@ -116,8 +135,15 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
         let var = lit.variable() as usize;
         unsafe {
             *self.lit_to_level.get_unchecked_mut(var) = decision_level;
-            *self.lit_to_pos.get_unchecked_mut(var) = self.t.len().wrapping_sub(1);
+            *self.lit_to_pos.get_unchecked_mut(var) = pos;
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.t.clear();
+        self.curr_idx = 0;
+        self.lit_to_level.fill(0);
+        self.lit_to_pos.fill(0);
     }
 
     pub fn backstep_to<A: Assignment>(&mut self, a: &mut A, level: usize) {
@@ -131,7 +157,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
                     *self.lit_to_level.get_unchecked_mut(var as usize) = 0;
                     *self.lit_to_pos.get_unchecked_mut(var as usize) = 0;
                 } else {
-                    truncate_at = i.wrapping_add(1);
+                    truncate_at = i;
                     break;
                 }
             }
@@ -139,5 +165,30 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
 
         self.curr_idx = truncate_at;
         self.t.truncate(truncate_at);
+    }
+
+    #[must_use]
+    pub fn get_locked_clauses(&self) -> SmallVec<[usize; 16]> {
+        let mut locked = SmallVec::<[usize; 16]>::new();
+        
+        for part in &self.t {
+            if let Reason::Clause(c_ref) = part.reason {
+                locked.push(c_ref);
+            }
+        }
+        
+        locked
+    }
+
+    pub fn remap_clause_indices(&mut self, map: &FxHashMap<usize, usize>) {
+        for part in &mut self.t {
+            if let Reason::Clause(ref mut c_ref) = part.reason {
+                if *c_ref >= self.cnf_non_learnt_idx {
+                    if let Some(new_ref) = map.get(c_ref) {
+                        *c_ref = *new_ref;
+                    } 
+                }
+            }
+        }
     }
 }

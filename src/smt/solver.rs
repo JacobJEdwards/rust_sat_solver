@@ -1,17 +1,17 @@
-use crate::sat::assignment::{Assignment, Solutions, VecAssignment};
+use crate::sat::assignment::VecAssignment;
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use crate::sat::phase_saving::SavedPhases;
 use crate::sat::propagation::WatchedLiterals;
 use crate::sat::restarter::Luby;
-use crate::sat::solver::Solver;
 use crate::sat::solver::SolverConfig;
+use crate::sat::solver::{Solutions, Solver};
 use crate::sat::variable_selection::Vsids;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::num::{NonZero, NonZeroI32};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -37,7 +37,6 @@ impl<L: Literal> SolverConfig for LiteralConfig<L> {
     type Literal = L;
     type LiteralStorage = Vec<L>;
     type Restarter = Luby;
-    type PhaseSelector = SavedPhases;
     type Propagator = WatchedLiterals<L, Self::LiteralStorage, Self::Assignment>;
 }
 
@@ -137,7 +136,7 @@ impl<L: Literal> SmtSolver<L, Vec<L>> {
         let mut var_constraints: HashMap<String, Vec<(&TheoryConstraint, bool)>> = HashMap::new();
 
         for ((var_name, value), lit) in &self.var_mappings {
-            let is_true = model.contains(*lit);
+            let is_true = model.check(NonZeroI32::new(*lit).unwrap());
 
             for constraint in &self.theory_constraints {
                 match constraint {

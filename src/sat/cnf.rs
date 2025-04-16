@@ -1,11 +1,13 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
-use crate::sat::assignment::Solutions;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::{Literal, PackedLiteral, Variable};
+use crate::sat::solver::Solutions;
 use itertools::Itertools;
 use smallvec::SmallVec;
+use std::num::NonZeroI32;
 use std::ops::{Index, IndexMut};
 
 pub type DecisionLevel = usize;
@@ -16,6 +18,7 @@ pub struct Cnf<L: Literal = PackedLiteral, S: LiteralStorage<L> = SmallVec<[L; 8
     pub num_vars: usize,
     pub vars: Vec<Variable>,
     pub lits: Vec<L>,
+    pub non_learnt_idx: usize,
 }
 
 impl<T: Literal, S: LiteralStorage<T>> Index<usize> for Cnf<T, S> {
@@ -69,6 +72,7 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
             num_vars: num_vars.wrapping_add(1) as usize,
             vars,
             lits: literals,
+            non_learnt_idx: clause_len,
         }
     }
 
@@ -115,16 +119,17 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
     }
 
     #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn verify(&self, solutions: &Solutions) -> bool {
         self.iter().all(|clause| {
             clause.iter().any(|&lit| {
-                let var = i32::try_from(lit.variable()).unwrap_or(0);
-
-                if lit.is_negated() {
-                    solutions.contains(-var)
-                } else {
-                    solutions.contains(var)
-                }
+                NonZeroI32::new(lit.variable() as i32).is_some_and(|var| {
+                    if lit.is_negated() {
+                        solutions.check(-var)
+                    } else {
+                        solutions.check(var)
+                    }
+                })
             })
         })
     }

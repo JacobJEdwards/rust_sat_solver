@@ -2,7 +2,7 @@ use crate::sat::clause::Clause;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::Literal;
 use itertools::Itertools;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -54,9 +54,9 @@ impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PreprocessorChain<
 pub struct PureLiteralElimination;
 
 impl PureLiteralElimination {
-    pub fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> HashSet<L> {
-        let mut pures = HashSet::new();
-        let mut impures = HashSet::new();
+    pub fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> FxHashSet<L> {
+        let mut pures = FxHashSet::default();
+        let mut impures = FxHashSet::default();
 
         for clause in cnf {
             for &lit in clause.iter() {
@@ -204,7 +204,7 @@ impl BoundedVariableElimination {
 impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for BoundedVariableElimination {
     fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut result = cnf.to_vec();
-        let vars: HashSet<L> = result.iter().flat_map(Clause::iter).copied().collect();
+        let vars: FxHashSet<L> = result.iter().flat_map(Clause::iter).copied().collect();
 
         for var in vars {
             if result.len() > 1000 {

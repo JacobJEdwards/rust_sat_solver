@@ -1,28 +1,31 @@
-use std::marker::PhantomData;
+use criterion::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
+use itertools::Itertools;
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
+use sat_solver::sat::clause_storage::LiteralStorage;
 use sat_solver::sat::cnf::Cnf;
+use sat_solver::sat::dpll::Dpll;
 use sat_solver::sat::literal::{
     DoubleLiteral, Literal, NegativeLiteral, PackedLiteral, StructLiteral,
 };
-use sat_solver::sat::phase_saving::{PhaseSelector, RandomPhases, SavedPhases};
 use sat_solver::sat::preprocessing::Preprocessor;
 use sat_solver::sat::preprocessing::{
     PureLiteralElimination, SubsumptionElimination, TautologyElimination,
 };
 use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
-use sat_solver::sat::restarter::{Exponential, Geometric, Linear, Luby, Never, Restarter};
+use sat_solver::sat::restarter::{Fixed, Geometric, Linear, Luby, Never, Restarter};
 use sat_solver::sat::solver::{solver_config, Solver, SolverConfig};
 use sat_solver::sat::variable_selection::{
-    FixedOrder, RandomOrder, VariableSelection, Vsids, VsidsHeap,
+    FixedOrder, JeroslowWangOneSided, RandomOrder, VariableSelection, Vsids, VsidsHeap,
 };
 use sat_solver::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN};
 use smallvec::SmallVec;
 use std::fmt::Debug;
-use std::hint::black_box;
 use std::time::Duration;
-use sat_solver::sat::clause_storage::LiteralStorage;
+
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 solver_config! (
     <A: Assignment>
@@ -33,12 +36,11 @@ solver_config! (
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, A>,
         Restarter = Luby,
-        PhaseSelector = SavedPhases
     }
 );
 
 solver_config!(
-    <V: VariableSelection<SavedPhases, PackedLiteral>>
+    <V: VariableSelection<PackedLiteral>>
     SelectorConfig {
         Literal = PackedLiteral,
         LiteralStorage = SmallVec<[PackedLiteral; 8]>,
@@ -46,7 +48,6 @@ solver_config!(
         VariableSelector = V,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
         Restarter = Luby,
-        PhaseSelector = SavedPhases
     }
 );
 
@@ -59,7 +60,6 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
         Restarter = R,
-        PhaseSelector = SavedPhases
     }
 );
 
@@ -72,20 +72,6 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<L, SmallVec<[L; 8]>, VecAssignment>,
         Restarter = Luby,
-        PhaseSelector = SavedPhases
-    }
-);
-
-solver_config!(
-    <P: PhaseSelector>
-    PhaseSelectorConfig {
-        Literal = PackedLiteral,
-        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
-        Assignment = VecAssignment,
-        VariableSelector = Vsids,
-        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-        Restarter = Luby,
-        PhaseSelector = P
     }
 );
 
@@ -98,7 +84,6 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = Prop,
         Restarter = Luby,
-        PhaseSelector = SavedPhases
     }
 );
 
@@ -111,34 +96,30 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, S, VecAssignment>,
         Restarter = Luby,
-        PhaseSelector = SavedPhases
     }
 );
 
 fn bench_sudoku(c: &mut Criterion) {
-    let board = EXAMPLE_SIXTEEN
-        .iter()
-        .map(|x| x.to_vec())
-        .collect::<Vec<_>>();
+    let board = EXAMPLE_SIXTEEN.iter().map(|x| x.to_vec()).collect_vec();
 
     let sudoku = Sudoku::new(Board::from(board));
     let cnf = sudoku.to_cnf();
 
-    // c.bench_function("sudoku - vec assignment", |b| {
-    //     b.iter(|| {
-    //         let mut state: Cdcl = Solver::new(cnf.clone());
-    //         let sol = state.solve();
-    //         black_box(sol);
-    //     })
-    // });
-    //
-    // c.bench_function("sudoku - hash map assignment", |b| {
-    //     b.iter(|| {
-    //         let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
-    //         let sol = state.solve();
-    //         black_box(sol);
-    //     })
-    // });
+    c.bench_function("sudoku - vec assignment", |b| {
+        b.iter(|| {
+            let mut state: Cdcl = Solver::new(cnf.clone());
+            let sol = state.solve();
+            black_box(sol);
+        })
+    });
+
+    c.bench_function("sudoku - hash map assignment", |b| {
+        b.iter(|| {
+            let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
+            let sol = state.solve();
+            black_box(sol);
+        })
+    });
 }
 
 fn solve_3sat<Config: SolverConfig>() {
@@ -216,19 +197,19 @@ fn bench_3sat(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("Geometric", |b| {
+    group.bench_function("Geometric (x4)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Geometric<4>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
     });
 
-    group.bench_function("Linear", |b| {
+    group.bench_function("Linear (N restarts * 100)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Linear>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Linear<100>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -237,7 +218,7 @@ fn bench_3sat(c: &mut Criterion) {
     group.bench_function("Exponential", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Exponential>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Geometric<2>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -271,8 +252,7 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.bench_function("Vsids heap", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<VsidsHeap>> =
-                    Solver::new(cnf.clone());
+                let mut state: Cdcl<SelectorConfig<VsidsHeap>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -282,6 +262,26 @@ fn bench_graph_colouring(c: &mut Criterion) {
         b.iter(|| {
             for cnf in &cnfs {
                 let mut state: Cdcl<SelectorConfig<Vsids>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Jeroslow-Wang one sided", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<JeroslowWangOneSided>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Jeroslow-Wang two sided", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<SelectorConfig<JeroslowWangOneSided>> =
+                    Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -412,19 +412,28 @@ fn bench_graph_colouring(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("Geometric", |b| {
+    group.bench_function("Fixed (every 100)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Fixed<100>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
     });
 
-    group.bench_function("Linear", |b| {
+    group.bench_function("Geometric (x4)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Linear>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Geometric<4>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Linear (n restarts x 100)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Linear<100>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -433,7 +442,7 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.bench_function("Exponential", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Exponential>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Geometric<2>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -449,7 +458,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
     });
 
     group.finish();
-
 
     let mut group = c.benchmark_group("graph_colouring - Assignment type");
     group.sample_size(100);
@@ -475,30 +483,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
 
     group.finish();
 
-    let mut group = c.benchmark_group("graph_colouring - Phase saving");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    group.bench_function("Saved Phases", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<PhaseSelectorConfig<SavedPhases>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Random Phases", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<PhaseSelectorConfig<RandomPhases>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
     let mut group = c.benchmark_group("graph_colouring - Preprocessing");
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
@@ -515,7 +499,7 @@ fn bench_graph_colouring(c: &mut Criterion) {
 
     let cnfs_for_preprocessors = cnfs.clone();
 
-    group.bench_function("Tautology", |b| {
+    group.bench_function("Tautology Removal", |b| {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
                 let cnf = Cnf::from(TautologyElimination.preprocess(&cnf.clauses));
@@ -525,7 +509,7 @@ fn bench_graph_colouring(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("Pure Literal", |b| {
+    group.bench_function("Pure Literal Elimination", |b| {
         b.iter(|| {
             for cnf in &cnfs_for_preprocessors {
                 let cnf = Cnf::from(PureLiteralElimination.preprocess(&cnf.clauses));
@@ -589,6 +573,105 @@ fn bench_graph_colouring(c: &mut Criterion) {
     });
 
     group.finish();
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    let mut group = c.benchmark_group("graph_colouring - Literal Storage");
+    group.sample_size(100);
+    group.measurement_time(Duration::from_secs(20));
+    group.bench_function("Vec", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 8]>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    group.bench_function("SmallVec (8)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 8]>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    group.bench_function("SmallVec (16)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 16]>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.finish();
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    let mut group = c.benchmark_group("graph_colouring - CDCL / DPLL");
+    group.sample_size(100);
+    group.measurement_time(Duration::from_secs(20));
+
+    group.bench_function("CDCL", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("DPLL", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Dpll = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.finish()
 }
 
 criterion_group!(benches, bench_graph_colouring);

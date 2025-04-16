@@ -1,22 +1,19 @@
 import os
 import json
 
-# Path to Criterion benchmark results
 CRITERION_DIR = "target/criterion/"
 
 
 def extract_benchmark_data():
     group_benchmarks = {}
 
-    # Iterate over benchmark group directories (e.g., "graph_colouring - Assignment type")
     for group in os.listdir(CRITERION_DIR):
         group_path = os.path.join(CRITERION_DIR, group)
         if not os.path.isdir(group_path):
-            continue  # Skip files, process directories only
+            continue
 
         benchmarks = []
 
-        # Iterate over individual benchmarks in the group (e.g., "Hashmap", "Vec")
         for benchmark in os.listdir(group_path):
             bench_path = os.path.join(group_path, benchmark, "base", "estimates.json")
 
@@ -24,7 +21,6 @@ def extract_benchmark_data():
                 with open(bench_path, "r") as f:
                     data = json.load(f)
 
-                # Extract mean execution time and standard deviation
                 mean = data.get("mean", {}).get("point_estimate", None)
                 std_dev = data.get("std_dev", {}).get("point_estimate", None)
 
@@ -41,6 +37,7 @@ def generate_latex_tables(group_benchmarks):
     latex_sections = []
 
     for group, benchmarks in group_benchmarks.items():
+        group = group.replace("_", "\_")
         latex = [
             r"\begin{table}[h]",
             r"    \centering",
@@ -56,8 +53,11 @@ def generate_latex_tables(group_benchmarks):
 
         latex.append(r"        \hline")
         latex.append(r"    \end{tabular}")
+        label = f"{{tab:bench-{group}}}".replace(" ", "-")
+        label = label.replace("\\", "")
+        latex.append(rf"\label{label}")
         latex.append(r"\end{table}")
-        latex.append("\n")  # Add a newline between tables
+        latex.append("\n")
 
         latex_sections.append("\n".join(latex))
 
@@ -70,7 +70,6 @@ if __name__ == "__main__":
     if group_benchmarks:
         latex_tables = generate_latex_tables(group_benchmarks)
 
-        # Save to a LaTeX file
         with open("benchmark_results.tex", "w") as f:
             f.write(latex_tables)
 
