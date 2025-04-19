@@ -193,7 +193,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
         self.literals.swap_remove(idx);
     }
 
-    #[allow(clippy::cast_possible_truncation,clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn calculate_lbd(&mut self, trail: &Trail<L, S>) {
         let max_level_in_clause = self
             .literals

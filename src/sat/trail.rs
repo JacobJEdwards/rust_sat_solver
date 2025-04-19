@@ -4,12 +4,12 @@ use crate::sat::assignment::Assignment;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
-use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
+use crate::sat::solver::Solutions;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use crate::sat::solver::Solutions;
+use std::marker::PhantomData;
+use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
 pub enum Reason {
@@ -73,14 +73,13 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
 
     #[must_use]
     pub fn level(&self, v: u32) -> usize {
-        unsafe {
-            *self.lit_to_level.get_unchecked(v as usize)
-        }
+        unsafe { *self.lit_to_level.get_unchecked(v as usize) }
     }
-    
-    #[must_use] pub fn solutions(&self) -> Solutions {
+
+    #[must_use]
+    pub fn solutions(&self) -> Solutions {
         let literals = self.t.iter().map(|p| p.lit.to_i32()).collect_vec();
-        
+
         Solutions::new(&literals)
     }
 
@@ -170,13 +169,13 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
     #[must_use]
     pub fn get_locked_clauses(&self) -> SmallVec<[usize; 16]> {
         let mut locked = SmallVec::<[usize; 16]>::new();
-        
+
         for part in &self.t {
             if let Reason::Clause(c_ref) = part.reason {
                 locked.push(c_ref);
             }
         }
-        
+
         locked
     }
 
@@ -186,7 +185,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
                 if *c_ref >= self.cnf_non_learnt_idx {
                     if let Some(new_ref) = map.get(c_ref) {
                         *c_ref = *new_ref;
-                    } 
+                    }
                 }
             }
         }

@@ -26,21 +26,21 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
         cnf: &mut Cnf<L, S>,
     ) -> Option<usize>;
 
+    fn num_propagations(&self) -> usize;
+
     fn add_propagation(lit: L, clause_idx: usize, trail: &mut Trail<L, S>) {
         trail.push(lit, trail.decision_level(), Reason::Clause(clause_idx));
     }
-    
-    fn cleanup_learnt(
-        &mut self,
-        learnt_idx: usize,
-    );
+
+    fn cleanup_learnt(&mut self, learnt_idx: usize);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct WatchedLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize = 8>(
-    Vec<SmallVec<[usize; N]>>,
-    PhantomData<*const (L, S, A)>,
-);
+pub struct WatchedLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize = 8> {
+    watches: Vec<SmallVec<[usize; N]>>,
+    num_propagations: usize,
+    marker: PhantomData<*const (L, S, A)>,
+}
 
 impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Propagator<L, S, A>
     for WatchedLiterals<L, S, A, N>
@@ -48,9 +48,17 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
     fn new(cnf: &Cnf<L, S>) -> Self {
         let st = vec![SmallVec::new(); cnf.num_vars * 2];
 
-        let mut wl = Self(st, PhantomData);
-        
-        for (i, clause) in cnf.iter().enumerate().filter(|(_, c)| !c.is_unit() && !c.is_deleted()) {
+        let mut wl = Self {
+            watches: st,
+            num_propagations: 0,
+            marker: PhantomData,
+        };
+
+        for (i, clause) in cnf
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_unit() && !c.is_deleted())
+        {
             wl.add_clause(clause, i);
         }
 
@@ -58,10 +66,10 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
     }
 
     fn add_clause(&mut self, clause: &Clause<L, S>, idx: usize) {
-        if clause.len() < 2  || clause.is_deleted() {
+        if clause.len() < 2 || clause.is_deleted() {
             return;
         }
-        
+
         let a = clause[0];
         let b = clause[1];
 
@@ -81,6 +89,7 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
             let lit = trail[trail.curr_idx].lit;
             trail.curr_idx = trail.curr_idx.wrapping_add(1);
             assignment.assign(lit);
+            self.num_propagations = self.num_propagations.wrapping_add(1);
 
             if let Some(idx) =
                 self.propagate_watch(&self[lit.negated().index()].clone(), trail, assignment, cnf)
@@ -92,8 +101,12 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
         None
     }
 
+    fn num_propagations(&self) -> usize {
+        self.num_propagations
+    }
+
     fn cleanup_learnt(&mut self, learnt_idx: usize) {
-        for i in &mut self.0 {
+        for i in &mut self.watches {
             i.retain(|&mut j| j < learnt_idx);
         }
     }
@@ -210,7 +223,7 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize> Index<usiz
     type Output = SmallVec<[usize; N]>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        unsafe { self.0.get_unchecked(index) }
+        unsafe { self.watches.get_unchecked(index) }
     }
 }
 
@@ -218,7 +231,7 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize> IndexMut<u
     for WatchedLiterals<L, S, A, N>
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        unsafe { self.0.get_unchecked_mut(index) }
+        unsafe { self.watches.get_unchecked_mut(index) }
     }
 }
 
@@ -259,11 +272,14 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize> IndexMut<L
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct UnitSearch<L: Literal, S: LiteralStorage<L>, A: Assignment>(PhantomData<(L, S, A)>);
+pub struct UnitSearch<L: Literal, S: LiteralStorage<L>, A: Assignment>(
+    usize,
+    PhantomData<(L, S, A)>,
+);
 
 impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A> for UnitSearch<L, S, A> {
     fn new(_: &Cnf<L, S>) -> Self {
-        Self(PhantomData)
+        Self(0, PhantomData)
     }
 
     fn add_clause(&mut self, _: &Clause<L, S>, _: usize) {}
@@ -287,8 +303,13 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A> for Un
                 let lit = trail[trail.curr_idx].lit;
                 trail.curr_idx = trail.curr_idx.wrapping_add(1);
                 assignment.assign(lit);
+                self.0 = self.0.wrapping_add(1);
             }
         }
+    }
+
+    fn num_propagations(&self) -> usize {
+        self.0
     }
 
     fn cleanup_learnt(&mut self, _: usize) {}
@@ -308,7 +329,7 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitSearch<L, S, A> {
                 UnitSearchResult::Unit(lit) => {
                     Self::add_propagation(lit, idx, trail);
                 }
-                UnitSearchResult::Continue => continue,
+                UnitSearchResult::Continue => {}
             }
         }
 
@@ -321,7 +342,7 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitSearch<L, S, A> {
         for &lit in clause.iter() {
             match assignment.literal_value(lit) {
                 Some(true) => return UnitSearchResult::Continue,
-                Some(false) => continue,
+                Some(false) => {}
                 None => {
                     if unassigned.is_some() {
                         return UnitSearchResult::Continue;
@@ -371,6 +392,10 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A>
                 return None;
             }
         }
+    }
+
+    fn num_propagations(&self) -> usize {
+        self.0.num_propagations()
     }
 
     fn cleanup_learnt(&mut self, _: usize) {}

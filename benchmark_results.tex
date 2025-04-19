@@ -5,11 +5,27 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        DPLL & 676530008.34 & 9307188.20 \\
-        CDCL & 1290227.78 & 4063.86 \\
+        DPLL & 57230565.73 & 96636.50 \\
+        CDCL & 750922.92 & 3214.21 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---CDCL-_-DPLL}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Benchmark Results for graph\_colouring - Clause Management}
+    \begin{tabular}{|l|c|c|}
+        \hline
+        Benchmark & Mean (ns) & Std Dev (ns) \\
+        \hline
+        LBD (check every 10) & 750814.44 & 3209.32 \\
+        LBD (check every 25) & 752239.36 & 3321.19 \\
+        None & 737442.60 & 2347.06 \\
+        \hline
+    \end{tabular}
+\label{tab:bench-graph_colouring---Clause-Management}
 \end{table}
 
 
@@ -20,9 +36,9 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        SmallVec (16) & 632585.19 & 3568.08 \\
-        SmallVec (8) & 652561.06 & 1895.61 \\
-        Vec & 652141.32 & 1347.29 \\
+        SmallVec (16) & 751665.75 & 2523.24 \\
+        SmallVec (8) & 753290.64 & 4019.86 \\
+        Vec & 755421.36 & 2928.89 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---Literal-Storage}
@@ -52,10 +68,10 @@
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
         Pure Literal & 2524239.05 & 71653.89 \\
-        Pure Literal Elimination & 2579363.89 & 10301.26 \\
-        Subsumption & 15625630.96 & 21431.84 \\
+        Pure Literal Elimination & 1810023.13 & 35945.26 \\
+        Subsumption & 15436782.34 & 18866.81 \\
         Tautology & 2605531.25 & 46942.53 \\
-        Tautology Removal & 2806444.47 & 8257.84 \\
+        Tautology Removal & 2244168.93 & 11942.08 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---Preprocessing}
@@ -69,8 +85,8 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        Hashmap & 1648788.95 & 5790.41 \\
-        Vec & 642940.92 & 2180.32 \\
+        Hashmap & 1106601.93 & 4856.01 \\
+        Vec & 752832.58 & 3562.14 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---Assignment-type}
@@ -84,12 +100,12 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        Jeroslow-Wang two sided & 1485719.43 & 71579.98 \\
-        Vsids & 648535.75 & 2229.66 \\
-        Random Order & 1454616.48 & 94001.15 \\
-        Vsids heap & 752078.92 & 3993.33 \\
-        Jeroslow-Wang one sided & 1431586.83 & 18711.95 \\
-        Fixed Order & 1380406.98 & 107236.46 \\
+        Jeroslow-Wang two sided & 1223077.21 & 3462.54 \\
+        Vsids & 751632.57 & 3744.38 \\
+        Random Order & 1757294.48 & 82526.35 \\
+        Vsids heap & 897951.35 & 8029.75 \\
+        Jeroslow-Wang one sided & 1222998.52 & 4035.80 \\
+        Fixed Order & 1531052.90 & 5232.03 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---Variable-selection}
@@ -103,10 +119,10 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        Packed & 650976.13 & 2185.97 \\
-        Struct & 621490.05 & 1308.15 \\
-        Doubled & 604630.60 & 6063.00 \\
-        Negated & 622795.46 & 5124.51 \\
+        Packed & 752391.51 & 9078.32 \\
+        Struct & 758235.45 & 2540.31 \\
+        Doubled & 713882.47 & 4235.93 \\
+        Negated & 764289.80 & 3732.25 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---literal-layout}
@@ -120,8 +136,8 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        Linear checking & 5217313.20 & 103206.05 \\
-        WatchedLiterals & 648818.80 & 1487.08 \\
+        Linear checking & 6093655.37 & 36931.14 \\
+        WatchedLiterals & 750308.69 & 2936.26 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---Propagator}
@@ -135,14 +151,18 @@
         \hline
         Benchmark & Mean (ns) & Std Dev (ns) \\
         \hline
-        Geometric (x4) & 660792.76 & 2718.43 \\
-        Linear (n restarts x 100) & 650325.31 & 2470.84 \\
+        Luby (2x) & 750030.50 & 3372.28 \\
+        Luby (10x) & 750080.55 & 2989.12 \\
+        Geometric (x4) & 750659.61 & 3065.00 \\
+        Linear (n restarts x 100) & 751394.96 & 3807.12 \\
         Luby & 649613.06 & 1937.96 \\
-        Exponential & 647219.51 & 2230.21 \\
-        Never & 648444.62 & 2320.41 \\
+        Exponential & 750749.63 & 3208.22 \\
+        Never & 751196.56 & 3051.35 \\
+        Luby (1x) & 749825.74 & 2629.57 \\
+        Luby (5x) & 750091.50 & 4231.23 \\
         Linear & 720064.45 & 30441.55 \\
         Geometric & 735916.04 & 35915.28 \\
-        Fixed (every 100) & 645102.21 & 2674.63 \\
+        Fixed (every 100) & 751726.84 & 3722.90 \\
         \hline
     \end{tabular}
 \label{tab:bench-graph_colouring---restart-strategy}

@@ -21,14 +21,14 @@ pub trait Restarter: Debug + Clone {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Luby {
+pub struct Luby<const N: usize> {
     restarts: usize,
     restarts_in: usize,
     restarts_interval: usize,
     restarts_next: usize,
 }
 
-impl Luby {
+impl<const N: usize> Luby<N> {
     fn luby(x: usize) -> usize {
         let mut k = 1_usize;
         while (1 << (k - 1)) <= x {
@@ -42,7 +42,7 @@ impl Luby {
     }
 }
 
-impl Restarter for Luby {
+impl<const N: usize> Restarter for Luby<N> {
     fn new() -> Self {
         Self {
             restarts: 0,
@@ -63,7 +63,7 @@ impl Restarter for Luby {
     fn restart(&mut self) {
         self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval = Self::luby(self.restarts_next);
+        self.restarts_interval = Self::luby(self.restarts_next) * N;
         self.restarts_next = self.restarts_next.wrapping_add(1);
     }
 

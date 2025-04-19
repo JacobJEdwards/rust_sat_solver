@@ -79,6 +79,10 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
             restarts: 0,
         }
     }
+
+    fn debug(&mut self) {
+        todo!()
+    }
 }
 
 impl<Config: SolverConfig + Clone> Dpll<Config> {

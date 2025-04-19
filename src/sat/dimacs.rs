@@ -19,7 +19,7 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
         let parts = line.split_whitespace();
 
         match parts.clone().peekable().peek() {
-            Some(&"p" | &"c") => continue,
+            Some(&"p" | &"c") => {},
             Some(&"%") | None => break,
             Some(_) => {
                 let clause = parts

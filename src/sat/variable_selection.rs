@@ -20,6 +20,9 @@ pub trait VariableSelection<L: Literal>: Debug + Clone {
     fn bumps<T: IntoIterator<Item = L>>(&mut self, vars: T);
     /// Decays the activity of the variables.
     fn decay(&mut self, decay: f64);
+
+    /// Returns the number of decisions made.
+    fn decisions(&self) -> usize;
 }
 
 /// A structure representing a score entry in the VSIDS heap.
@@ -43,6 +46,7 @@ pub struct VsidsHeap {
     activity_inc: f64,
     /// Heap of score entries, allowing for efficient retrieval of the highest score.
     heap: BinaryHeap<ScoreEntry>,
+    num_decisions: usize,
 }
 
 /// `Index` trait implementation for the VSIDS heap.
@@ -127,6 +131,7 @@ impl<L: Literal> VariableSelection<L> for VsidsHeap {
             scores,
             activity_inc: 1.0,
             heap,
+            num_decisions: 0,
         }
     }
 
@@ -142,6 +147,7 @@ impl<L: Literal> VariableSelection<L> for VsidsHeap {
             }
 
             if assignment[entry.lit_idx / 2].is_unassigned() {
+                self.num_decisions += 1;
                 return Some(L::from_index(entry.lit_idx));
             }
         }
@@ -168,6 +174,10 @@ impl<L: Literal> VariableSelection<L> for VsidsHeap {
             self.rescale_scores();
         }
     }
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }
 
 /// A structure representing the VSIDS variable selection strategy, without the use of a max heap.
@@ -180,6 +190,7 @@ pub struct Vsids<const EARLY_EXIT: bool = false> {
     scores: Vec<f64>,
     activity_inc: f64,
     num_vars: usize,
+    num_decisions: usize,
 }
 
 /// `Index` trait implementation for the VSIDS variable selection strategy.
@@ -226,6 +237,7 @@ impl<L: Literal, const E: bool> VariableSelection<L> for Vsids<E> {
             scores: vec![0.0; num_vars * 2],
             activity_inc: 1.0,
             num_vars,
+            num_decisions: 0,
         }
     }
 
@@ -248,6 +260,11 @@ impl<L: Literal, const E: bool> VariableSelection<L> for Vsids<E> {
                 }
             }
         }
+
+        if max.is_some() {
+            self.num_decisions += 1;
+        }
+
         max
     }
 
@@ -273,6 +290,10 @@ impl<L: Literal, const E: bool> VariableSelection<L> for Vsids<E> {
             self.activity_inc = VSIDS_RESCALE_FACTOR;
         }
     }
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }
 
 /// A structure representing a fixed order variable selection strategy.
@@ -284,6 +305,7 @@ impl<L: Literal, const E: bool> VariableSelection<L> for Vsids<E> {
 pub struct FixedOrder {
     var_count: usize,
     rand: RefCell<Rng>,
+    num_decisions: usize,
 }
 
 impl<L: Literal> VariableSelection<L> for FixedOrder {
@@ -291,6 +313,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
         Self {
             var_count: num_vars,
             rand: RefCell::new(Rng::with_seed(0)),
+            num_decisions: 0,
         }
     }
 
@@ -303,6 +326,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
                 let mut rng = self.rand.borrow_mut();
                 let polarity = rng.bool();
                 let lit = L::new(v, polarity);
+                self.num_decisions += 1;
                 Some(lit)
             } else {
                 None
@@ -315,22 +339,32 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
 
     /// NO-OP
     fn decay(&mut self, _: f64) {}
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }
 
 /// A structure representing a random order variable selection strategy.
 /// This structure returns the next first unassigned variable in a random order.
 #[derive(Debug, Clone, Default)]
 pub struct RandomOrder {
-    var_count: usize,
     rand: RefCell<Rng>,
+    vars: Vec<usize>,
+    num_decisions: usize,
 }
 
 /// `VariableSelection` trait implementation for the random order variable selection strategy.
 impl<L: Literal> VariableSelection<L> for RandomOrder {
     fn new<C: AsRef<[L]>>(num_vars: usize, _: &[L], _: &[C]) -> Self {
+        let mut rand = Rng::with_seed(0);
+        let mut indices: Vec<usize> = (1..num_vars).collect();
+        rand.shuffle(indices.as_mut_slice());
+        
         Self {
-            var_count: num_vars,
+            vars: indices,
             rand: RefCell::new(Rng::new()),
+            num_decisions: 0,
         }
     }
 
@@ -338,14 +372,14 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
     /// Shuffles the variables and iterates over them, looking for the first unassigned variable.
     fn pick<A: Assignment>(&mut self, assignment: &A) -> Option<L> {
         #![allow(clippy::cast_possible_truncation)]
-        let mut rng = self.rand.borrow_mut();
-        let mut indices: Vec<usize> = (0..self.var_count).collect();
-        rng.shuffle(indices.as_mut_slice());
 
-        for i in indices {
-            if assignment[i].is_unassigned() {
+        let mut rng = self.rand.borrow_mut();
+        
+        for i in &self.vars {
+            if assignment[*i].is_unassigned() {
                 let polarity = rng.bool();
-                return Some(L::new(i as u32, polarity));
+                self.num_decisions += 1;
+                return Some(L::new(*i as u32, polarity));
             }
         }
         None
@@ -356,9 +390,13 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
 
     /// NO-OP
     fn decay(&mut self, _: f64) {}
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }
 
-#[allow(clippy::cast_possible_wrap,clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
 fn jw_weight(clause_len: usize) -> f64 {
     if clause_len == 0 {
         0.0
@@ -383,6 +421,7 @@ fn init_jw_scores<L: Literal, C: AsRef<[L]>>(num_vars: usize, clauses: &[C]) -> 
 pub struct JeroslowWangOneSided {
     scores: Vec<f64>,
     rand: RefCell<Rng>,
+    num_decisions: usize,
 }
 
 impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
@@ -392,6 +431,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
         Self {
             scores,
             rand: RefCell::new(Rng::with_seed(0)),
+            num_decisions: 0,
         }
     }
 
@@ -411,6 +451,8 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
         }
 
         best_lit.map(|lit| {
+            self.num_decisions += 1;
+
             if self.rand.borrow_mut().f64() < 0.1 {
                 lit.negated()
             } else {
@@ -422,6 +464,10 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
     fn bumps<T: IntoIterator<Item = L>>(&mut self, _: T) {}
 
     fn decay(&mut self, _: f64) {}
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -429,6 +475,7 @@ pub struct JeroslowWangTwoSided {
     scores: Vec<f64>,
     num_vars: usize,
     rand: RefCell<Rng>,
+    num_decisions: usize,
 }
 
 impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
@@ -439,6 +486,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
             scores,
             num_vars,
             rand: RefCell::new(Rng::with_seed(0)),
+            num_decisions: 0,
         }
     }
 
@@ -481,6 +529,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
                 }
             })
             .map(|lit| {
+                self.num_decisions += 1;
                 if self.rand.borrow_mut().f64() < 0.1 {
                     lit.negated()
                 } else {
@@ -492,4 +541,8 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
     fn bumps<T: IntoIterator<Item = L>>(&mut self, _: T) {}
 
     fn decay(&mut self, _: f64) {}
+
+    fn decisions(&self) -> usize {
+        self.num_decisions
+    }
 }

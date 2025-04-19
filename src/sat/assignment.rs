@@ -3,9 +3,9 @@ use crate::sat::literal::{Literal, Variable};
 use crate::sat::solver::Solutions;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
+use rustc_hash::FxHashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default, Hash, PartialOrd, Ord)]
 pub enum VarState {

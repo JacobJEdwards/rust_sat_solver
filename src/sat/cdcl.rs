@@ -12,8 +12,8 @@ use crate::sat::solver::{DefaultConfig, SolutionStats, Solutions, Solver, Solver
 use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
-use rustc_hash::FxHashMap;
-use rustc_hash::FxHashSet;
+use std::fmt::Debug;
+use crate::sat::clause_management::ClauseManagement;
 
 #[derive(Debug, Clone)]
 pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
@@ -33,14 +33,7 @@ pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
 
     conflict_analysis: Analyser<Config::Literal, Config::LiteralStorage>,
 
-    conflicts_since_last_cleanup: usize,
-
-    cleanup_interval: usize,
-
-    cleanup_candidates: Vec<(usize, u32, f64)>, 
-    cleanup_indices_to_remove: FxHashSet<usize>,
-    cleanup_new_learnt_clauses: Vec<Clause<Config::Literal, Config::LiteralStorage>>, 
-    cleanup_old_to_new_idx_map: FxHashMap<usize, usize>,
+    manager: Config::ClauseManager,
 }
 
 impl<Config: SolverConfig> Cdcl<Config> {
@@ -65,109 +58,9 @@ impl<Config: SolverConfig> Cdcl<Config> {
         }
 
         let c_ref = self.cnf.len();
-        
+
         self.cnf.add_clause(clause);
         self.propagator.add_clause(&self.cnf[c_ref], c_ref);
-    }
-
-    const fn should_clean_db(&self) -> bool {
-        self.conflicts_since_last_cleanup >= self.cleanup_interval
-    }
-
-    fn clean_clause_db(&mut self) {
-        let learnt_start_idx = self.cnf.non_learnt_idx;
-        if self.cnf.len() <= learnt_start_idx {
-            return; 
-        }
-
-        let num_learnt_initial = self.cnf.len() - learnt_start_idx;
-
-        self.cleanup_candidates.clear();
-
-        let locked_clauses = self.trail.get_locked_clauses(); 
-
-        for idx in learnt_start_idx..self.cnf.len() {
-            if !locked_clauses.contains(&idx) {
-                let clause = &self.cnf[idx];
-                self.cleanup_candidates.push((idx, clause.lbd, clause.activity()));
-            }
-        }
-
-        let candidates = &mut self.cleanup_candidates;
-
-        if candidates.is_empty() {
-            return; 
-        }
-
-        let num_candidates = candidates.len();
-        let num_to_remove = num_candidates / 2;
-
-        if num_to_remove == 0 {
-            return;
-        }
-
-        let comparison = |a: &(usize, u32, f64), b: &(usize, u32, f64)| {
-            let (_, lbd_a, act_a) = a;
-            let (_, lbd_b, act_b) = b;
-
-            let keep_a = *lbd_a <= 2;
-            let keep_b = *lbd_b <= 2;
-
-            if keep_a && !keep_b { return std::cmp::Ordering::Greater; }
-            if !keep_a && keep_b { return std::cmp::Ordering::Less;    }
-
-            match lbd_b.cmp(lbd_a) {
-                std::cmp::Ordering::Equal => act_a.partial_cmp(act_b).unwrap_or(std::cmp::Ordering::Equal), // Lower activity first
-                other => other,
-            }
-        };
-
-        candidates.select_nth_unstable_by(num_to_remove, comparison);
-
-        self.cleanup_indices_to_remove.clear();
-        for (idx, _, _) in &candidates[..num_to_remove] {
-            self.cleanup_indices_to_remove.insert(*idx);
-        }
-        
-        let indices_to_remove = &self.cleanup_indices_to_remove;
-
-        self.cleanup_new_learnt_clauses.clear();
-        self.cleanup_old_to_new_idx_map.clear();
-
-        let mut current_new_idx = learnt_start_idx;
-        for old_idx in learnt_start_idx..self.cnf.len() {
-            if !indices_to_remove.contains(&old_idx) {
-                
-                self.cleanup_new_learnt_clauses.push(self.cnf[old_idx].clone());
-                self.cleanup_old_to_new_idx_map.insert(old_idx, current_new_idx);
-                current_new_idx += 1;
-            }
-        }
-
-        let new_total_len = learnt_start_idx + self.cleanup_new_learnt_clauses.len();
-
-        self.cnf.clauses.truncate(learnt_start_idx);
-        self.cnf.clauses.append(&mut self.cleanup_new_learnt_clauses);
-
-        self.trail.remap_clause_indices(&self.cleanup_old_to_new_idx_map);
-
-        self.propagator.cleanup_learnt(learnt_start_idx);
-        for new_idx in learnt_start_idx..new_total_len {
-            self.propagator.add_clause(&self.cnf[new_idx], new_idx);
-        }
-
-        self.conflicts_since_last_cleanup = 0;
-    }    
-    fn decay_clause_activities(&mut self) {
-        for clause in &mut self.cnf.clauses[self.cnf.non_learnt_idx..] {
-            clause.decay_activity(0.95);
-        }
-    }
-    
-    fn bump_involved_clause_activities(&mut self, c_ref: usize) {
-        let clause = &mut self.cnf[c_ref];
-        
-        clause.bump_activity(1.0);
     }
 }
 
@@ -176,13 +69,9 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
         let propagator = Propagator::new(&cnf);
         let vars = &cnf.lits;
         let selector = Config::VariableSelector::new(cnf.num_vars, vars, &cnf.clauses);
-        let analysis = Analyser::new(cnf.num_vars);
-        
-        let mut cleanup_indices_to_remove =  FxHashSet::default();
-        cleanup_indices_to_remove.reserve(64);
-        
-        let mut cleanup_old_to_new_idx_map = FxHashMap::default();
-        cleanup_old_to_new_idx_map.reserve(64);
+        let restarter = Restarter::new();
+        let conflict_analysis = Analyser::new(cnf.num_vars);
+        let manager = Config::ClauseManager::new(&cnf.clauses);
 
         Self {
             assignment: Assignment::new(cnf.num_vars),
@@ -190,15 +79,10 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             propagator,
             cnf,
             selector,
-            restarter: Restarter::new(),
+            restarter,
             decision_level: 0,
-            conflict_analysis: analysis,
-            conflicts_since_last_cleanup: 0,
-            cleanup_interval: 10,
-            cleanup_indices_to_remove,
-            cleanup_old_to_new_idx_map,
-            cleanup_candidates: Vec::with_capacity(64),
-            cleanup_new_learnt_clauses: Vec::with_capacity(64),
+            conflict_analysis,
+            manager,
         }
     }
 
@@ -207,7 +91,11 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             return Some(Solutions::default());
         }
 
-        if self.propagator.propagate(&mut self.trail, &mut self.assignment, &mut self.cnf).is_some() {
+        if self
+            .propagator
+            .propagate(&mut self.trail, &mut self.assignment, &mut self.cnf)
+            .is_some()
+        {
             return None;
         }
 
@@ -220,8 +108,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                 self.propagator
                     .propagate(&mut self.trail, &mut self.assignment, &mut self.cnf)
             {
-                self.conflicts_since_last_cleanup += 1;
-                self.decay_clause_activities();
+                self.manager.on_conflict(&mut self.cnf);
 
                 let (conflict, to_bump) = self.conflict_analysis.analyse_conflict(
                     &self.cnf,
@@ -229,7 +116,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                     &self.assignment,
                     c_ref,
                 );
-                
+
                 self.conflict_analysis.reset();
 
                 match conflict {
@@ -237,7 +124,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                     Conflict::Unit(clause) => {
                         self.trail.backstep_to(&mut self.assignment, 0);
                         self.decision_level = 0;
-                        
+
                         let lit = clause[0];
                         self.add_propagation(lit, c_ref);
                     }
@@ -255,10 +142,11 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 
                         clause.calculate_lbd(&self.trail);
                         clause.is_learnt = true;
-                        
+
                         clause.bump_activity(1.0);
-                        
-                        self.bump_involved_clause_activities(c_ref);
+
+                        self.manager
+                            .bump_involved_clause_activities(&mut self.cnf, c_ref);
 
                         self.trail.backstep_to(&mut self.assignment, bt_level);
                         self.decision_level = bt_level;
@@ -266,10 +154,14 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                         let new_clause_idx = self.cnf.len();
                         self.add_clause(clause);
                         self.add_propagation(asserting_lit, new_clause_idx);
-                        
-                        if self.should_clean_db() {
-                            self.clean_clause_db();
-                            self.conflicts_since_last_cleanup = 0;
+
+                        if self.manager.should_clean_db() {
+                            self.manager.clean_clause_db(
+                                &mut self.cnf,
+                                &mut self.trail,
+                                &mut self.propagator,
+                                &mut self.assignment,
+                            );
                         }
                     }
 
@@ -279,7 +171,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                         self.decision_level = 0;
                     }
                 }
-                
+
                 self.selector.bumps(to_bump);
                 self.selector.decay(0.95);
 
@@ -297,7 +189,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             }
 
             let lit = self.selector.pick(&self.assignment);
-            
+
             if let Some(lit) = lit {
                 self.trail.push(lit, self.decision_level, Reason::Decision);
             } else {
@@ -313,10 +205,14 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
     fn stats(&self) -> SolutionStats {
         SolutionStats {
             conflicts: self.conflict_analysis.count,
-            decisions: self.decision_level,
-            propagations: self.cnf.num_vars - self.decision_level,
+            decisions: self.selector.decisions(),
+            propagations: self.propagator.num_propagations(),
             restarts: self.restarter.num_restarts(),
         }
+    }
+
+    fn debug(&mut self) {
+        todo!()
     }
 }
 

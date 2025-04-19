@@ -9,6 +9,9 @@ use sat_solver::sat::dpll::Dpll;
 use sat_solver::sat::literal::{
     DoubleLiteral, Literal, NegativeLiteral, PackedLiteral, StructLiteral,
 };
+use sat_solver::sat::clause_management::{
+    LbdClauseManagement, ClauseManagement, NoClauseManagement
+};
 use sat_solver::sat::preprocessing::Preprocessor;
 use sat_solver::sat::preprocessing::{
     PureLiteralElimination, SubsumptionElimination, TautologyElimination,
@@ -35,7 +38,8 @@ solver_config! (
         Assignment = A,
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, A>,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
     }
 );
 
@@ -47,7 +51,8 @@ solver_config!(
         Assignment = VecAssignment,
         VariableSelector = V,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
     }
 );
 
@@ -60,6 +65,7 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
         Restarter = R,
+        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
     }
 );
 
@@ -71,7 +77,8 @@ solver_config!(
         Assignment = VecAssignment,
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<L, SmallVec<[L; 8]>, VecAssignment>,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<L, SmallVec<[L; 8]>, 10>,
     }
 );
 
@@ -83,7 +90,8 @@ solver_config!(
         Assignment = VecAssignment,
         VariableSelector = Vsids,
         Propagator = Prop,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
     }
 );
 
@@ -95,7 +103,21 @@ solver_config!(
         Assignment = VecAssignment,
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, S, VecAssignment>,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<PackedLiteral, S, 10>,
+    }
+);
+
+solver_config! (
+    <M: ClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>>>
+    ClauseManagerConfig {
+        Literal = PackedLiteral,
+        LiteralStorage = SmallVec<[PackedLiteral; 8]>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        Restarter = Luby<2>,
+        ClauseManager = M,
     }
 );
 
@@ -188,10 +210,37 @@ fn bench_3sat(c: &mut Criterion) {
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("Luby", |b| {
+    group.bench_function("Luby (1x)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Luby<1>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (2x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<2>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (5x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<5>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (5x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<10>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -249,6 +298,15 @@ fn bench_graph_colouring(c: &mut Criterion) {
         }
     }
 
+    // group.bench_function("Random Order", |b| {
+    //     b.iter(|| {
+    //         for cnf in &cnfs {
+    //             let mut state: Cdcl<SelectorConfig<RandomOrder>> = Solver::new(cnf.clone());
+    //             black_box(state.solve());
+    //         }
+    //     })
+    // });
+
     group.bench_function("Vsids heap", |b| {
         b.iter(|| {
             for cnf in &cnfs {
@@ -296,14 +354,6 @@ fn bench_graph_colouring(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("Random Order", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<RandomOrder>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
 
     group.finish();
 
@@ -403,10 +453,37 @@ fn bench_graph_colouring(c: &mut Criterion) {
     group.sample_size(100);
     group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("Luby", |b| {
+    group.bench_function("Luby (1x)", |b| {
         b.iter(|| {
             for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby>> = Solver::new(cnf.clone());
+                let mut state: Cdcl<RestarterConfig<Luby<1>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (2x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<2>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (5x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<5>>> = Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("Luby (10x)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<RestarterConfig<Luby<10>>> = Solver::new(cnf.clone());
                 black_box(state.solve());
             }
         })
@@ -671,7 +748,53 @@ fn bench_graph_colouring(c: &mut Criterion) {
         })
     });
 
-    group.finish()
+    group.finish();
+
+    let mut cnfs = Vec::new();
+
+    for i in 1..100 {
+        let file = format!("data/flat30-60/flat30-{}.cnf", i);
+        match sat_solver::sat::dimacs::parse_file(&file) {
+            Ok(cnf) => cnfs.push(cnf),
+            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+        }
+    }
+
+    let mut group = c.benchmark_group("graph_colouring - Clause Management");
+    group.sample_size(100);
+    group.measurement_time(Duration::from_secs(20));
+
+    group.bench_function("LBD (check every 10)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<ClauseManagerConfig<LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("LBD (check every 25)", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<ClauseManagerConfig<LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 25>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.bench_function("None", |b| {
+        b.iter(|| {
+            for cnf in &cnfs {
+                let mut state: Cdcl<ClauseManagerConfig<NoClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>>>> =
+                    Solver::new(cnf.clone());
+                black_box(state.solve());
+            }
+        })
+    });
+
+    group.finish();
 }
 
 criterion_group!(benches, bench_graph_colouring);

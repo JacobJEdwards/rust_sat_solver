@@ -1,11 +1,29 @@
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::{Literal, PackedLiteral};
+use crate::sat::literal::Literal;
 use crate::sat::solver::Solutions;
-use std::num::{NonZero, NonZeroI32};
+use itertools::Itertools;
+use std::fmt::Display;
+use std::num::NonZeroI32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board(Vec<Vec<usize>>);
+
+impl Display for Board {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for row in &self.0 {
+            writeln!(
+                f,
+                "{}",
+                row.iter()
+                    .map(std::string::ToString::to_string)
+                    .collect_vec()
+                    .join(" ")
+            )?;
+        }
+        Ok(())
+    }
+}
 
 impl Board {
     #[must_use]
@@ -32,50 +50,8 @@ impl From<&Board> for Vec<Vec<usize>> {
     }
 }
 
-impl From<[Vec<usize>; 4]> for Board {
-    fn from(board: [Vec<usize>; 4]) -> Self {
-        Self::new(board.to_vec())
-    }
-}
-
-impl From<[Vec<usize>; 9]> for Board {
-    fn from(board: [Vec<usize>; 9]) -> Self {
-        Self::new(board.to_vec())
-    }
-}
-
-impl From<[Vec<usize>; 16]> for Board {
-    fn from(board: [Vec<usize>; 16]) -> Self {
-        Self::new(board.to_vec())
-    }
-}
-
-impl From<[Vec<usize>; 25]> for Board {
-    fn from(board: [Vec<usize>; 25]) -> Self {
-        Self::new(board.to_vec())
-    }
-}
-
-impl From<&[&[usize; 4]; 4]> for Board {
-    fn from(board: &[&[usize; 4]; 4]) -> Self {
-        Self::new(board.iter().map(|r| r.to_vec()).collect())
-    }
-}
-
-impl From<&[&[usize; 9]; 9]> for Board {
-    fn from(board: &[&[usize; 9]; 9]) -> Self {
-        Self::new(board.iter().map(|r| r.to_vec()).collect())
-    }
-}
-
-impl From<&[&[usize; 16]; 16]> for Board {
-    fn from(board: &[&[usize; 16]; 16]) -> Self {
-        Self::new(board.iter().map(|r| r.to_vec()).collect())
-    }
-}
-
-impl From<&[&[usize; 25]; 25]> for Board {
-    fn from(board: &[&[usize; 25]; 25]) -> Self {
+impl<const N: usize> From<&[&[usize; N]; N]> for Board {
+    fn from(board: &[&[usize; N]; N]) -> Self {
         Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
@@ -224,10 +200,24 @@ impl From<Size> for usize {
     }
 }
 
+impl Display for Size {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let size: usize = (*self).into();
+        write!(f, "{size}x{size}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sudoku {
     pub board: Board,
     pub size: Size,
+}
+
+impl Display for Sudoku {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Sudoku {{ size: {} }}", self.size)?;
+        write!(f, "{}", self.board)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -402,7 +392,7 @@ impl Sudoku {
     }
 
     #[must_use]
-    pub fn decode_solution(&self, solutions: &Solutions) -> Self {
+    pub fn decode(&self, solutions: &Solutions) -> Self {
         let size = self.size.into();
         let mut board = vec![vec![0; size]; size];
         for row in 1..=size {
@@ -448,6 +438,14 @@ impl Sudoku {
     pub fn iter(&self) -> impl Iterator<Item = Vec<usize>> {
         self.board.0.clone().into_iter()
     }
+
+    pub fn from_string(sudoku: &str) -> Result<Self, String> {
+        parse_sudoku(sudoku)
+    }
+
+    pub fn from_file(file: &str) -> Result<Self, String> {
+        parse_sudoku_file(file)
+    }
 }
 
 impl From<Board> for Sudoku {
@@ -460,4 +458,40 @@ impl From<Sudoku> for Board {
     fn from(sudoku: Sudoku) -> Self {
         sudoku.board
     }
+}
+
+pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
+    let lines = sudoku.lines().collect_vec();
+    let size = lines.len();
+    let mut board = vec![vec![0; size]; size];
+
+    for (i, line) in lines.iter().enumerate() {
+        for (j, c) in line.split_ascii_whitespace().enumerate() {
+            if let Ok(num) = c.parse::<usize>() {
+                if num > size {
+                    return Err(format!("Invalid Sudoku: Number {num} exceeds size {size}"));
+                }
+                board[i][j] = num;
+            } else {
+                return Err(format!("Invalid Sudoku: Invalid character {c}"));
+            }
+        }
+    }
+
+    if board.len() != size {
+        return Err("Invalid Sudoku: Inconsistent row lengths".to_string());
+    }
+
+    for row in &board {
+        if row.len() != size {
+            return Err("Invalid Sudoku: Inconsistent column lengths".to_string());
+        }
+    }
+
+    Ok(Sudoku::new(Board::new(board)))
+}
+
+pub fn parse_sudoku_file(file: &str) -> Result<Sudoku, String> {
+    let content = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
+    parse_sudoku(&content)
 }

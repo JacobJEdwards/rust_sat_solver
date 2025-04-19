@@ -12,6 +12,7 @@ use crate::sat::variable_selection::Vsids;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::num::{NonZero, NonZeroI32};
+use crate::sat::clause_management::LbdClauseManagement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -36,8 +37,9 @@ impl<L: Literal> SolverConfig for LiteralConfig<L> {
     type VariableSelector = Vsids;
     type Literal = L;
     type LiteralStorage = Vec<L>;
-    type Restarter = Luby;
+    type Restarter = Luby<50>;
     type Propagator = WatchedLiterals<L, Self::LiteralStorage, Self::Assignment>;
+    type ClauseManager = LbdClauseManagement<Self::Literal, Self::LiteralStorage, 10>;
 }
 
 impl<L: Literal> SmtSolver<L, Vec<L>> {

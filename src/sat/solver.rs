@@ -1,3 +1,4 @@
+use crate::sat::clause_management::{ClauseManagement, LbdClauseManagement};
 use crate::sat::assignment::Assignment;
 use crate::sat::assignment::VecAssignment;
 use crate::sat::clause_storage::LiteralStorage;
@@ -7,10 +8,10 @@ use crate::sat::literal::PackedLiteral;
 use crate::sat::propagation::Propagator;
 use crate::sat::propagation::WatchedLiterals;
 use crate::sat::restarter::{Luby, Restarter};
-use crate::sat::variable_selection::{VariableSelection};
+use crate::sat::variable_selection::VariableSelection;
 use crate::sat::variable_selection::Vsids;
+use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use rustc_hash::{FxHashSet};
 use std::fmt::Debug;
 use std::num::NonZeroI32;
 
@@ -77,6 +78,8 @@ pub trait SolverConfig: Debug {
     type Restarter: Restarter + Clone;
     /// The unit propagation strategy.
     type Propagator: Propagator<Self::Literal, Self::LiteralStorage, Self::Assignment> + Clone;
+    /// The clause management strategy.
+    type ClauseManager: ClauseManagement<Self::Literal, Self::LiteralStorage>;
 }
 
 /// A macro to define a solver configuration.
@@ -116,6 +119,7 @@ macro_rules! solver_config {
         VariableSelector = $selector:ty,
         Propagator = $propagator:ty,
         Restarter = $restarter:ty,
+        ClauseManager = $manager:ty,
     }) => {
         /// Generated solver configuration.
         #[derive(Debug, Clone, Default)]
@@ -129,6 +133,7 @@ macro_rules! solver_config {
             type VariableSelector = $selector;
             type Propagator = $propagator;
             type Restarter = $restarter;
+            type ClauseManager = $manager;
         }
     };
 
@@ -141,6 +146,7 @@ macro_rules! solver_config {
             VariableSelector = $selector:ty,
             Propagator = $propagator:ty,
             Restarter = $restarter:ty,
+            ClauseManager = $manager:ty,
         }
     ) => {
         /// Generated solver configuration with generic parameters.
@@ -158,6 +164,7 @@ macro_rules! solver_config {
             type VariableSelector = $selector;
             type Propagator = $propagator;
             type Restarter = $restarter;
+            type ClauseManager = $manager;
         }
     };
 }
@@ -171,7 +178,8 @@ solver_config!(
         Assignment = VecAssignment,
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-        Restarter = Luby,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
     }
 );
 
@@ -192,4 +200,6 @@ pub trait Solver<C: SolverConfig = DefaultConfig> {
 
     /// Returns information about the solution.
     fn stats(&self) -> SolutionStats;
+
+    fn debug(&mut self);
 }
