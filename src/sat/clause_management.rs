@@ -20,12 +20,14 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug {
         assignment: &mut A,
     );
     fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize);
+    fn num_removed(&self) -> usize;
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LbdClauseManagement<L: Literal, S: LiteralStorage<L>, const N: usize> {
     interval: usize,
     conflicts_since_last_cleanup: usize,
+    num_removed: usize,
 
     candidates: Vec<(usize, u32, f64)>,
     indices_to_remove: FxHashSet<usize>,
@@ -52,6 +54,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         Self {
             interval: N,
             conflicts_since_last_cleanup: 0,
+            num_removed: 0,
             candidates,
             indices_to_remove,
             new_learnt_clauses,
@@ -160,11 +163,16 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         }
 
         self.conflicts_since_last_cleanup = 0;
+        self.num_removed += num_to_remove;
     }
 
     fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize) {
         let clause = &mut cnf[c_ref];
         clause.bump_activity(1.0);
+    }
+    
+    fn num_removed(&self) -> usize {
+        self.num_removed
     }
 }
 
@@ -204,4 +212,8 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
     }
 
     fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {}
+
+    fn num_removed(&self) -> usize {
+        0
+    }
 }

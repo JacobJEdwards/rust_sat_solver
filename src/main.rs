@@ -83,6 +83,10 @@ struct CommonOptions {
     /// Enable statistics
     #[arg(short, long, default_value_t = true)]
     stats: bool,
+
+    /// Enable print solution
+    #[arg(short, long, default_value_t = false)]
+    print_solution: bool,
 }
 
 fn main() {
@@ -97,10 +101,8 @@ fn main() {
 
             solve_and_report(
                 cnf,
-                common.debug,
-                common.verify,
+                common,
                 Some(&path),
-                common.stats,
                 elapsed,
             );
         }
@@ -113,10 +115,8 @@ fn main() {
 
             solve_and_report(
                 cnf,
-                common.debug,
-                common.verify,
+                common,
                 None,
-                common.stats,
                 elapsed,
             );
         }
@@ -164,6 +164,7 @@ fn main() {
                             allocated,
                             resident,
                             sol.is_some(),
+                            common.print_solution
                         );
                     }
 
@@ -208,6 +209,7 @@ fn main() {
                             allocated,
                             resident,
                             sol.is_some(),
+                            common.print_solution
                         );
                     }
 
@@ -243,10 +245,18 @@ fn solve(cnf: Cnf, debug: bool, label: Option<&str>) -> (Option<Solutions>, Dura
     if let Some(name) = label {
         println!("Solving: {:?}", name);
     }
+    
+    if debug {
+        println!("CNF: {}", cnf);
+        println!("Variables: {}", cnf.num_vars);
+        println!("Clauses: {}", cnf.clauses.len());
+        println!("Literals: {}", cnf.lits.len());
+    }
+    
     epoch::advance().unwrap();
 
     let time = std::time::Instant::now();
-    let mut solver: Cdcl<DefaultConfig> = Solver::new(cnf.clone());
+    let mut solver: Cdcl<DefaultConfig> = Solver::new(cnf);
     let sol = solver.solve();
     let elapsed = time.elapsed();
 
@@ -260,15 +270,13 @@ fn solve(cnf: Cnf, debug: bool, label: Option<&str>) -> (Option<Solutions>, Dura
 
 fn solve_and_report(
     cnf: Cnf,
-    debug: bool,
-    verify: bool,
+    common: CommonOptions,
     label: Option<&str>,
-    stats: bool,
     parse_time: Duration,
 ) {
     epoch::advance().unwrap();
 
-    let (sol, elapsed, solver) = solve(cnf.clone(), debug, label);
+    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, label);
 
     epoch::advance().unwrap();
 
@@ -278,11 +286,11 @@ fn solve_and_report(
     let allocated = allocated / 1024.0 / 1024.0;
     let resident = resident / 1024.0 / 1024.0;
 
-    if verify {
+    if common.verify {
         verify_solution(cnf.clone(), &sol);
     }
 
-    if stats {
+    if common.stats {
         print_stats(
             parse_time,
             elapsed,
@@ -291,6 +299,7 @@ fn solve_and_report(
             allocated,
             resident,
             sol.is_some(),
+            common.print_solution
         );
     }
 }
@@ -329,6 +338,7 @@ fn print_stats(
     allocated: f64,
     resident: f64,
     sol_found: bool,
+    print_solution: bool,
 ) {
     let s = solver.stats();
     let elapsed_secs = elapsed.as_secs_f64();
@@ -340,8 +350,8 @@ fn print_stats(
     stat_line("Literals", cnf.lits.len());
 
     println!("========================[ Search Statistics ]========================");
-    stat_line("Learnt clauses", cnf.clauses.len() - cnf.non_learnt_idx);
-    stat_line("Total clauses", cnf.clauses.len());
+    stat_line("Learnt clauses", s.learnt_clauses);
+    stat_line("Total clauses", cnf.clauses.len() + s.learnt_clauses);
     stat_line_with_rate("Conflicts", s.conflicts, elapsed_secs);
     stat_line_with_rate("Decisions", s.decisions, elapsed_secs);
     stat_line_with_rate("Propagations", s.propagations, elapsed_secs);
@@ -349,8 +359,12 @@ fn print_stats(
     stat_line("Memory usage (MB)", allocated);
     stat_line("Resident memory (MB)", resident);
     stat_line("CPU time (s)", elapsed_secs);
-
     println!("=====================================================================");
+    
+    if print_solution && sol_found {
+        let solution = solver.solutions();
+        println!("Solutions: {solution}");
+    }
 
     if sol_found {
         println!("\nSATISFIABLE");

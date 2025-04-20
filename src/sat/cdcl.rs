@@ -208,6 +208,8 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             decisions: self.selector.decisions(),
             propagations: self.propagator.num_propagations(),
             restarts: self.restarter.num_restarts(),
+            learnt_clauses: self.cnf.len() - self.cnf.non_learnt_idx,
+            removed_clauses: self.manager.num_removed()
         }
     }
 

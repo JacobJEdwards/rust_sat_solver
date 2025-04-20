@@ -12,7 +12,7 @@ use crate::sat::variable_selection::VariableSelection;
 use crate::sat::variable_selection::Vsids;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroI32;
 
 /// Contains information about a solution.
@@ -26,6 +26,10 @@ pub struct SolutionStats {
     pub propagations: usize,
     /// How many times did the solver restart.
     pub restarts: usize,
+    /// How many clauses were added.
+    pub learnt_clauses: usize,
+    /// How many clauses were removed.
+    pub removed_clauses: usize,
 }
 
 /// Represents the solutions to a given formula.
@@ -33,6 +37,18 @@ pub struct SolutionStats {
 pub struct Solutions {
     /// Set of assignments. Negative / positive determines polarity.
     pub assignments: FxHashSet<NonZeroI32>,
+}
+
+impl Display for Solutions {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let assignments: Vec<String> = self
+            .assignments
+            .iter()
+            .map(|&i| format!("{}{}", i.get(), if i.get() > 0 { "" } else { "-" }))
+            .collect();
+            
+        write!(f, "{}", assignments.join(" "))
+        }
 }
 
 impl Solutions {
