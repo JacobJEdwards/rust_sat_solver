@@ -122,15 +122,17 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                 match conflict {
                     Conflict::Ground => return None,
                     Conflict::Unit(clause) => {
-                        self.trail.backstep_to(&mut self.assignment, 0);
-                        self.decision_level = 0;
-
-                        let lit = clause[0];
-                        self.add_propagation(lit, c_ref);
+                        // self.trail.backstep_to(&mut self.assignment, 0);
+                        // self.decision_level = 0;
+                        // 
+                        // let lit = clause[0];
+                        // self.add_propagation(lit, c_ref);
+                        return None
                     }
 
                     Conflict::Learned(assert_idx, mut clause) => {
                         clause.swap(0, assert_idx);
+                        
                         let asserting_lit = clause[0];
 
                         let bt_level = clause
@@ -166,9 +168,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                     }
 
                     Conflict::Restart(_) => {
-                        self.trail.reset();
-                        self.assignment.reset();
-                        self.decision_level = 0;
+                        return None
                     }
                 }
 
