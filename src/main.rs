@@ -70,7 +70,7 @@ enum Commands {
     },
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 struct CommonOptions {
     /// Enable debug output
     #[arg(short, long, default_value_t = false)]
@@ -90,9 +90,40 @@ struct CommonOptions {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::try_parse();
 
-    match cli.command {
+    if cli.is_err() {
+        let path = std::env::args().nth(1);
+
+        match path {
+            Some(path) => {
+                let time = std::time::Instant::now();
+                let cnf =
+                    parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
+                let elapsed = time.elapsed();
+                
+                let common = CommonOptions {
+                    debug: false,
+                    verify: true,
+                    stats: true,
+                    print_solution: true,
+                };
+
+                solve_and_report(
+                    cnf,
+                    common,
+                    Some(&path),
+                    elapsed,
+                );
+            }
+            None => {
+                eprintln!("{}", cli.err().unwrap());
+            }
+        }
+        return;
+    }
+
+    match cli.ok().unwrap().command {
         Commands::File { path, common } => {
             let time = std::time::Instant::now();
             let cnf =

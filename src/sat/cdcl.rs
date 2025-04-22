@@ -121,12 +121,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 
                 match conflict {
                     Conflict::Ground => return None,
-                    Conflict::Unit(clause) => {
-                        // self.trail.backstep_to(&mut self.assignment, 0);
-                        // self.decision_level = 0;
-                        // 
-                        // let lit = clause[0];
-                        // self.add_propagation(lit, c_ref);
+                    Conflict::Unit(_) | Conflict::Restart(_) => {
                         return None
                     }
 
@@ -165,10 +160,6 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
                                 &mut self.assignment,
                             );
                         }
-                    }
-
-                    Conflict::Restart(_) => {
-                        return None
                     }
                 }
 
