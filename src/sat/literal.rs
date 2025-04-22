@@ -28,6 +28,7 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
     }
 
     fn to_i32(&self) -> i32 {
+        #[allow(clippy::cast_possible_wrap)]
         let var = self.variable() as i32;
         let polarity = if self.polarity() { 1 } else { -1 };
         var * polarity
