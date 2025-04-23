@@ -18,8 +18,14 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 #[derive(Parser, Debug)]
 #[command(name = "SATSolver", version, about = "A configurable SAT solver")]
 struct Cli {
+    #[arg(global = true)]
+    path: Option<String>,
+
     #[clap(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    common: CommonOptions,
 }
 
 #[derive(Subcommand, Debug)]
@@ -29,7 +35,7 @@ enum Commands {
         /// Path to the DIMACS .cnf file
         #[arg(short, long)]
         path: String,
-
+        
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -39,7 +45,7 @@ enum Commands {
         /// Literal CNF input as a string
         #[arg(short, long)]
         input: String,
-
+        
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -50,12 +56,11 @@ enum Commands {
         #[arg(short, long)]
         path: String,
 
-        /// Size of the Sudoku puzzle
-        #[command(flatten)]
-        common: CommonOptions,
-
         #[arg(short, long, default_value_t = false)]
         export_dimacs: bool,
+        
+        #[command(flatten)]
+        common: CommonOptions,
     },
 
     /// Solve a Sudoku puzzle
@@ -63,8 +68,7 @@ enum Commands {
         /// Path to the Sudoku file
         #[arg(short, long)]
         path: String,
-
-        /// Size of the Sudoku puzzle
+        
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -90,41 +94,26 @@ struct CommonOptions {
 }
 
 fn main() {
-    let cli = Cli::try_parse();
+    let cli = Cli::parse();
 
-    if cli.is_err() {
-        let path = std::env::args().nth(1);
-
-        match path {
-            Some(path) => {
-                let time = std::time::Instant::now();
-                let cnf =
-                    parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
-                let elapsed = time.elapsed();
-                
-                let common = CommonOptions {
-                    debug: false,
-                    verify: true,
-                    stats: true,
-                    print_solution: true,
-                };
-
-                solve_and_report(
-                    cnf,
-                    common,
-                    Some(&path),
-                    elapsed,
-                );
-            }
-            None => {
-                eprintln!("{}", cli.err().unwrap());
-            }
+    if let Some(path) = cli.path.clone() {
+        if cli.command.is_none() {
+            let time = std::time::Instant::now();
+            let cnf = parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
+            let elapsed = time.elapsed();
+            
+            solve_and_report(
+                cnf,
+                cli.common,
+                Some(&path),
+                elapsed,
+            );
+            return;
         }
-        return;
     }
-
-    match cli.ok().unwrap().command {
-        Commands::File { path, common } => {
+    
+    match cli.command {
+        Some(Commands::File { path, common }) => {
             let time = std::time::Instant::now();
             let cnf =
                 parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
@@ -138,7 +127,7 @@ fn main() {
             );
         }
 
-        Commands::Text { input, common } => {
+        Some(Commands::Text { input, common }) => {
             let time = std::time::Instant::now();
             let clauses = parse_textual_cnf(&input);
             let cnf = Cnf::from(clauses);
@@ -151,11 +140,11 @@ fn main() {
                 elapsed,
             );
         }
-        Commands::Sudoku {
+        Some(Commands::Sudoku {
             path,
             common,
             export_dimacs,
-        } => {
+        }) => {
             let time = std::time::Instant::now();
             let sudoku = sudoku::solver::parse_sudoku_file(&path);
 
@@ -211,7 +200,7 @@ fn main() {
                 }
             }
         }
-        Commands::Nonogram { path, common } => {
+        Some(Commands::Nonogram { path, common }) => {
             let time = std::time::Instant::now();
             let nonogram = nonogram::solver::parse_nonogram_file(&path);
             match nonogram {
@@ -256,6 +245,12 @@ fn main() {
                 Err(e) => {
                     eprintln!("Error parsing Nonogram file: {}", e);
                 }
+            }
+        }
+        None => {
+            if cli.path.is_none() {
+                eprintln!("No command provided. Use --help for more information.");
+                std::process::exit(1);
             }
         }
     }
@@ -361,6 +356,8 @@ fn stat_line_with_rate(label: &str, value: usize, elapsed: f64) {
         value as f64 / elapsed
     );
 }
+
+#[allow(clippy::too_many_arguments)]
 fn print_stats(
     parse_time: Duration,
     elapsed: Duration,
