@@ -202,14 +202,14 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
             .max()
             .unwrap_or(0);
 
-        let mut levels_seen = BitVec::from_elem(max_level_in_clause + 1, false);
-        let mut count = 0;
+        let mut levels_seen = BitVec::from_elem(max_level_in_clause .saturating_add(1), false);
+        let mut count = 0u32;
 
         for &lit in self.literals.iter() {
             let level = trail.level(lit.variable());
             if level > 0 && !levels_seen[level] {
                 levels_seen.set(level, true);
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 
@@ -219,7 +219,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
         {
             self.lbd = 1;
         } else {
-            self.lbd = count as u32;
+            self.lbd = count;
         }
 
         if self.is_learnt && !self.is_empty() && self.lbd == 0 {

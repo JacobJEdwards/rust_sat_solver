@@ -91,8 +91,9 @@ impl<L: Literal> SmtSolver<L, Vec<L>> {
         };
 
         let var_val = (var_name.clone(), *var_value);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         if !self.var_mappings.contains_key(&var_val) {
-            let new_lit = self.var_mappings.len() as i32 + 1;
+            let new_lit = self.var_mappings.len().saturating_add(1) as i32;
             self.var_mappings.insert(var_val, new_lit);
         }
 

@@ -63,7 +63,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     }
 
     fn on_conflict(&mut self, cnf: &mut Cnf<L, S>) {
-        self.conflicts_since_last_cleanup += 1;
+        self.conflicts_since_last_cleanup = self.conflicts_since_last_cleanup.saturating_add(1);
         self.decay_clause_activities(cnf);
     }
 
@@ -146,11 +146,11 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
             if !indices_to_remove.contains(&old_idx) {
                 self.new_learnt_clauses.push(cnf[old_idx].clone());
                 self.old_to_new_idx_map.insert(old_idx, current_new_idx);
-                current_new_idx += 1;
+                current_new_idx = current_new_idx.saturating_add(1);
             }
         }
 
-        let new_total_len = learnt_start_idx + self.new_learnt_clauses.len();
+        let new_total_len = learnt_start_idx.saturating_add(self.new_learnt_clauses.len());
 
         cnf.clauses.truncate(learnt_start_idx);
         cnf.clauses.append(&mut self.new_learnt_clauses);
@@ -163,7 +163,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         }
 
         self.conflicts_since_last_cleanup = 0;
-        self.num_removed += num_to_remove;
+        self.num_removed = self.num_removed.saturating_add(num_to_remove);
     }
 
     fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize) {
