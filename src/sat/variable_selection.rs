@@ -147,7 +147,7 @@ impl<L: Literal> VariableSelection<L> for VsidsHeap {
             }
 
             if assignment[entry.lit_idx / 2].is_unassigned() {
-                self.num_decisions = self.num_decisions.saturating_add( 1);
+                self.num_decisions = self.num_decisions.wrapping_add( 1);
                 return Some(L::from_index(entry.lit_idx));
             }
         }
@@ -262,7 +262,7 @@ impl<L: Literal, const E: bool> VariableSelection<L> for Vsids<E> {
         }
 
         if max.is_some() {
-            self.num_decisions = self.num_decisions.saturating_add(1);
+            self.num_decisions = self.num_decisions.wrapping_add(1);
         }
 
         max
@@ -326,7 +326,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
                 let mut rng = self.rand.borrow_mut();
                 let polarity = rng.bool();
                 let lit = L::new(v, polarity);
-                self.num_decisions = self.num_decisions.saturating_add(1);
+                self.num_decisions = self.num_decisions.wrapping_add(1);
                 Some(lit)
             } else {
                 None
@@ -378,7 +378,7 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
         for i in &self.vars {
             if assignment[*i].is_unassigned() {
                 let polarity = rng.bool();
-                self.num_decisions = self.num_decisions.saturating_add(1);
+                self.num_decisions = self.num_decisions.wrapping_add(1);
                 return Some(L::new(*i as u32, polarity));
             }
         }
@@ -451,7 +451,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
         }
 
         best_lit.map(|lit| {
-            self.num_decisions = self.num_decisions.saturating_add(1);
+            self.num_decisions = self.num_decisions.wrapping_add(1);
 
             if self.rand.borrow_mut().f64() < 0.1 {
                 lit.negated()
@@ -529,7 +529,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
                 }
             })
             .map(|lit| {
-                self.num_decisions = self.num_decisions.saturating_add(1);
+                self.num_decisions = self.num_decisions.wrapping_add(1);
                 if self.rand.borrow_mut().f64() < 0.1 {
                     lit.negated()
                 } else {

@@ -70,7 +70,7 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
 
         Self {
             clauses,
-            num_vars: num_vars.saturating_add(1) as usize,
+            num_vars: num_vars.wrapping_add(1) as usize,
             vars,
             lits,
             non_learnt_idx: clause_len,

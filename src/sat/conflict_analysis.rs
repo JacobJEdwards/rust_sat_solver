@@ -110,7 +110,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         assignment: &impl Assignment,
         cref: usize,
     ) -> (Conflict<T, S>, SmallVec<[T; N]>) {
-        self.count = self.count.saturating_add(1);
+        self.count = self.count.wrapping_add(1);
 
         let dl = trail.decision_level();
 

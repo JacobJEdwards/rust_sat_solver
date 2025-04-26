@@ -11,7 +11,7 @@ use crate::sat::solver::{Solutions, Solver};
 use crate::sat::variable_selection::Vsids;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::num::{NonZero, NonZeroI32};
+use std::num::NonZeroI32;
 use crate::sat::clause_management::LbdClauseManagement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -93,7 +93,7 @@ impl<L: Literal> SmtSolver<L, Vec<L>> {
         let var_val = (var_name.clone(), *var_value);
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         if !self.var_mappings.contains_key(&var_val) {
-            let new_lit = self.var_mappings.len().saturating_add(1) as i32;
+            let new_lit = self.var_mappings.len().wrapping_add(1) as i32;
             self.var_mappings.insert(var_val, new_lit);
         }
 

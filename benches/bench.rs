@@ -20,7 +20,7 @@ use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Fixed, Geometric, Linear, Luby, Never, Restarter};
 use sat_solver::sat::solver::{solver_config, Solver, SolverConfig};
 use sat_solver::sat::variable_selection::{
-    FixedOrder, JeroslowWangOneSided, RandomOrder, VariableSelection, Vsids, VsidsHeap,
+    FixedOrder, JeroslowWangOneSided, VariableSelection, Vsids, VsidsHeap,
 };
 use sat_solver::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN};
 use smallvec::SmallVec;
