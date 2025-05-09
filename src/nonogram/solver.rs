@@ -1,11 +1,11 @@
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::{Literal};
+use crate::sat::literal::Literal;
+use crate::sat::solver::Solutions;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroI32;
-use itertools::Itertools;
-use crate::sat::clause_storage::LiteralStorage;
-use crate::sat::solver::Solutions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Cell {
@@ -73,7 +73,8 @@ impl Nonogram {
 
     pub fn decode(&self, assignment: &Solutions) -> Vec<Vec<Cell>> {
         let mut solution = vec![vec![Cell::Unknown; self.num_cols()]; self.num_rows()];
-        let assignment_set: std::collections::HashSet<NonZeroI32> = assignment.iter().cloned().collect();
+        let assignment_set: std::collections::HashSet<NonZeroI32> =
+            assignment.iter().cloned().collect();
 
         for r in 0..self.num_rows() {
             for c in 0..self.num_cols() {
@@ -104,7 +105,8 @@ impl Nonogram {
         let cell_unique_clauses = generate_cell_unique_clauses(self);
 
         println!("Generating row clauses...");
-        let (row_clauses, next_aux_var_after_rows) = generate_line_clauses(self, true, next_aux_var);
+        let (row_clauses, next_aux_var_after_rows) =
+            generate_line_clauses(self, true, next_aux_var);
         next_aux_var = next_aux_var_after_rows;
         println!("Generating column clauses...");
         let (col_clauses, _) = generate_line_clauses(self, false, next_aux_var);
@@ -133,10 +135,7 @@ fn generate_cell_clauses(nonogram: &Nonogram) -> Vec<Vec<i32>> {
             let fill_var = Variable::new(r, c, Cell::Filled).encode(nonogram);
             let empty_var = Variable::new(r, c, Cell::Empty).encode(nonogram);
 
-            clauses.push(vec![
-                -(fill_var as i32),
-                -(empty_var as i32),
-            ]);
+            clauses.push(vec![-(fill_var as i32), -(empty_var as i32)]);
         }
     }
     clauses
@@ -149,10 +148,7 @@ fn generate_cell_unique_clauses(nonogram: &Nonogram) -> Vec<Vec<i32>> {
             let fill_var = Variable::new(r, c, Cell::Filled).encode(nonogram);
             let empty_var = Variable::new(r, c, Cell::Empty).encode(nonogram);
 
-            clauses.push(vec![
-                fill_var as i32,
-                empty_var as i32,
-            ]);
+            clauses.push(vec![fill_var as i32, empty_var as i32]);
         }
     }
     clauses
@@ -164,20 +160,41 @@ fn generate_line_clauses(
     mut next_aux_var: u32,
 ) -> (Vec<Vec<i32>>, u32) {
     let mut clauses = Vec::new();
-    let outer_loop_size = if is_row { nonogram.num_rows() } else { nonogram.num_cols() };
-    let line_size = if is_row { nonogram.num_cols() } else { nonogram.num_rows() };
-    let constraints_vec = if is_row { &nonogram.rows } else { &nonogram.cols };
+    let outer_loop_size = if is_row {
+        nonogram.num_rows()
+    } else {
+        nonogram.num_cols()
+    };
+    let line_size = if is_row {
+        nonogram.num_cols()
+    } else {
+        nonogram.num_rows()
+    };
+    let constraints_vec = if is_row {
+        &nonogram.rows
+    } else {
+        &nonogram.cols
+    };
 
     let mut memo = HashMap::new();
 
     for i in 0..outer_loop_size {
         let constraint = &constraints_vec[i];
-        println!("  Processing {} {}: Constraint {:?}, Size {}", if is_row {"Row"} else {"Col"}, i, constraint, line_size);
+        println!(
+            "  Processing {} {}: Constraint {:?}, Size {}",
+            if is_row { "Row" } else { "Col" },
+            i,
+            constraint,
+            line_size
+        );
 
-        let possible_patterns =
-            generate_possible_solutions_memo(line_size, constraint, &mut memo);
-        println!("    Found {} possible patterns for {} {}", possible_patterns.len(), if is_row {"Row"} else {"Col"}, i);
-
+        let possible_patterns = generate_possible_solutions_memo(line_size, constraint, &mut memo);
+        println!(
+            "    Found {} possible patterns for {} {}",
+            possible_patterns.len(),
+            if is_row { "Row" } else { "Col" },
+            i
+        );
 
         if possible_patterns.is_empty() {
             println!("Warning: No possible patterns found for {} {} with constraints {:?}. Puzzle might be unsatisfiable.", if is_row {"Row"} else {"Col"}, i, constraint);
@@ -185,20 +202,19 @@ fn generate_line_clauses(
             continue;
         }
 
-        let aux_vars: Vec<u32> = (0..possible_patterns.len()).map(|_| {
-            let var = next_aux_var;
-            next_aux_var += 1;
-            var
-        }).collect();
+        let aux_vars: Vec<u32> = (0..possible_patterns.len())
+            .map(|_| {
+                let var = next_aux_var;
+                next_aux_var += 1;
+                var
+            })
+            .collect();
 
         clauses.push(aux_vars.iter().map(|&v| v as i32).collect());
 
         for j in 0..aux_vars.len() {
             for k in (j + 1)..aux_vars.len() {
-                clauses.push(vec![
-                    -(aux_vars[j] as i32),
-                    -(aux_vars[k] as i32),
-                ]);
+                clauses.push(vec![-(aux_vars[j] as i32), -(aux_vars[k] as i32)]);
             }
         }
 
@@ -209,10 +225,7 @@ fn generate_line_clauses(
                 let (r, c) = if is_row { (i, k) } else { (k, i) };
                 let cell_var = Variable::new(r, c, cell_state).encode(nonogram);
 
-                clauses.push(vec![
-                    -(aux_var as i32),
-                    cell_var as i32,
-                ]);
+                clauses.push(vec![-(aux_var as i32), cell_var as i32]);
             }
         }
     }
@@ -231,7 +244,14 @@ fn generate_possible_solutions_memo(
     }
 
     let mut solutions = Vec::new();
-    generate_recursive(size, constraint, 0, 0, &mut vec![Cell::Unknown; size], &mut solutions);
+    generate_recursive(
+        size,
+        constraint,
+        0,
+        0,
+        &mut vec![Cell::Unknown; size],
+        &mut solutions,
+    );
 
     memo.insert(key, solutions.clone());
     solutions
@@ -257,7 +277,8 @@ fn generate_recursive(
 
     let block_len = constraints[constraint_idx] as usize;
     let remaining_constraints = &constraints[(constraint_idx + 1)..];
-    let min_len_for_remaining = remaining_constraints.iter().sum::<u32>() as usize + remaining_constraints.len();
+    let min_len_for_remaining =
+        remaining_constraints.iter().sum::<u32>() as usize + remaining_constraints.len();
 
     for pos in start_pos..=size {
         let end_pos = pos + block_len;
@@ -282,13 +303,17 @@ fn generate_recursive(
                 break;
             }
         }
-        if !possible { continue; }
+        if !possible {
+            continue;
+        }
 
         // Check separator after block
         if end_pos < size && current_pattern[end_pos] == Cell::Filled {
             possible = false; // Conflict with separator
         }
-        if !possible { continue; }
+        if !possible {
+            continue;
+        }
 
         // --- Place the block and recurse ---
 
@@ -309,11 +334,10 @@ fn generate_recursive(
         if !possible {
             // Backtrack the empty fills (not strictly necessary if we check first)
             for i in start_pos..pos {
-                current_pattern[i] = original_pattern_slice[i-pos]; // Restore original
+                current_pattern[i] = original_pattern_slice[i - pos]; // Restore original
             }
             continue;
         }
-
 
         // Place the Filled block
         for i in pos..end_pos {
@@ -340,7 +364,10 @@ fn generate_recursive(
         );
 
         // Backtrack: Restore the modified part of the pattern
-        for i in pos..current_pattern.len().min(pos + original_pattern_slice.len()) {
+        for i in pos..current_pattern
+            .len()
+            .min(pos + original_pattern_slice.len())
+        {
             current_pattern[i] = original_pattern_slice[i - pos];
         }
         // If end_pos was within bounds, reset that separator cell too
@@ -354,7 +381,6 @@ fn generate_recursive(
                 current_pattern[end_pos] = Cell::Unknown;
             }
         }
-
     }
 
     // --- Also consider the case where we place *no more blocks* from start_pos ---
@@ -385,7 +411,10 @@ impl Variable {
     /// Creates a new variable representation.
     /// Uses 0-based indexing internally for row/col.
     fn new(row: usize, col: usize, fill: Cell) -> Self {
-        assert!(fill == Cell::Filled || fill == Cell::Empty, "Variable must represent Filled or Empty state");
+        assert!(
+            fill == Cell::Filled || fill == Cell::Empty,
+            "Variable must represent Filled or Empty state"
+        );
         Variable { row, col, fill }
     }
 
@@ -422,14 +451,22 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
     if let Some(line) = lines.next() {
         if line.starts_with("rows ") {
             num_rows = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
-        } else { return Err("Expected 'rows <num>' format".to_string()); }
-    } else { return Err("Missing 'rows' line".to_string()); }
+        } else {
+            return Err("Expected 'rows <num>' format".to_string());
+        }
+    } else {
+        return Err("Missing 'rows' line".to_string());
+    }
 
     if let Some(line) = lines.next() {
         if line.starts_with("cols ") {
             num_cols = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
-        } else { return Err("Expected 'cols <num>' format".to_string()); }
-    } else { return Err("Missing 'cols' line".to_string()); }
+        } else {
+            return Err("Expected 'cols <num>' format".to_string());
+        }
+    } else {
+        return Err("Missing 'cols' line".to_string());
+    }
 
     let num_rows = num_rows.ok_or("Invalid number for rows")?;
     let num_cols = num_cols.ok_or("Invalid number for cols")?;
@@ -440,23 +477,28 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
 
     let mut rows = Vec::with_capacity(num_rows);
     for i in 0..num_rows {
-        let line = lines.next().ok_or(format!("Missing row constraint line {}", i + 1))?;
-        let constraint: Constraint = line.split_whitespace()
+        let line = lines
+            .next()
+            .ok_or(format!("Missing row constraint line {}", i + 1))?;
+        let constraint: Constraint = line
+            .split_whitespace()
             .map(|s| s.parse::<u32>())
             .collect::<Result<_, _>>()
             .map_err(|e| format!("Invalid number in row constraint {}: {}", i + 1, e))?;
         if constraint.is_empty() || (constraint.len() == 1 && constraint[0] == 0) {
             rows.push(vec![]);
-        }
-        else {
+        } else {
             rows.push(constraint);
         }
     }
 
     let mut cols = Vec::with_capacity(num_cols);
     for i in 0..num_cols {
-        let line = lines.next().ok_or(format!("Missing column constraint line {}", i + 1))?;
-        let constraint: Constraint = line.split_whitespace()
+        let line = lines
+            .next()
+            .ok_or(format!("Missing column constraint line {}", i + 1))?;
+        let constraint: Constraint = line
+            .split_whitespace()
             .map(|s| s.parse::<u32>())
             .collect::<Result<_, _>>()
             .map_err(|e| format!("Invalid number in column constraint {}: {}", i + 1, e))?;
@@ -470,7 +512,6 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
     if lines.next().is_some() {
         return Err("Extra lines found after column constraints".to_string());
     }
-
 
     Ok(Nonogram::new(rows, cols))
 }

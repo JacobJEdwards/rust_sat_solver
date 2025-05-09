@@ -37,11 +37,10 @@ def generate_latex_tables(group_benchmarks):
     latex_sections = []
 
     for group, benchmarks in group_benchmarks.items():
-        group = group.replace("_", "\_")
+        group = group.replace("_", "-")
+        label = f"\label{{tab:bench-{group}}}".replace(" ", "-")
         latex = [
-            r"\begin{table}[h]",
-            r"    \centering",
-            rf"    \caption{{Benchmark Results for {group}}}",
+            rf"\begin{{cmptable}}[h]{{Benchmark Results for {group}{label}}}",
             r"    \begin{tabular}{|l|c|c|}",
             r"        \hline",
             r"        Benchmark & Mean (ns) & Std Dev (ns) \\",
@@ -53,10 +52,8 @@ def generate_latex_tables(group_benchmarks):
 
         latex.append(r"        \hline")
         latex.append(r"    \end{tabular}")
-        label = f"{{tab:bench-{group}}}".replace(" ", "-")
         label = label.replace("\\", "")
-        latex.append(rf"\label{label}")
-        latex.append(r"\end{table}")
+        latex.append(r"\end{cmptable}")
         latex.append("\n")
 
         latex_sections.append("\n".join(latex))

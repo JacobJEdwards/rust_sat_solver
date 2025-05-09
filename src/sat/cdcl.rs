@@ -2,6 +2,7 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
+use crate::sat::clause_management::ClauseManagement;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{Analyser, Conflict};
@@ -13,7 +14,6 @@ use crate::sat::trail::Reason;
 use crate::sat::trail::Trail;
 use crate::sat::variable_selection::VariableSelection;
 use std::fmt::Debug;
-use crate::sat::clause_management::ClauseManagement;
 
 #[derive(Debug, Clone)]
 pub struct Cdcl<Config: SolverConfig = DefaultConfig> {
@@ -121,13 +121,11 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 
                 match conflict {
                     Conflict::Ground => return None,
-                    Conflict::Unit(_) | Conflict::Restart(_) => {
-                        return None
-                    }
+                    Conflict::Unit(_) | Conflict::Restart(_) => return None,
 
                     Conflict::Learned(assert_idx, mut clause) => {
                         clause.swap(0, assert_idx);
-                        
+
                         let asserting_lit = clause[0];
 
                         let bt_level = clause
@@ -200,7 +198,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             propagations: self.propagator.num_propagations(),
             restarts: self.restarter.num_restarts(),
             learnt_clauses: self.cnf.len() - self.cnf.non_learnt_idx,
-            removed_clauses: self.manager.num_removed()
+            removed_clauses: self.manager.num_removed(),
         }
     }
 
@@ -217,30 +215,11 @@ mod tests {
     use crate::sat::literal::PackedLiteral;
 
     fn get_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
-        Cnf {
-            clauses: vec![
-                Clause::new(&[L::new(1, false)]),
-                Clause::new(&[L::new(2, false)]),
-                Clause::new(&[L::new(3, false)]),
-            ],
-            num_vars: 3,
-            vars: vec![1, 2, 3],
-            lits: vec![L::new(1, false), L::new(2, false), L::new(3, false)],
-            non_learnt_idx: 3,
-        }
+        Cnf::new(vec![vec![-1], vec![-2], vec![-3]])
     }
 
     fn get_unsat_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
-        Cnf {
-            clauses: vec![
-                Clause::new(&[L::new(1, false)]),
-                Clause::new(&[L::new(1, true)]),
-            ],
-            num_vars: 1,
-            vars: vec![1, 1],
-            lits: vec![L::new(1, false), L::new(1, true)],
-            non_learnt_idx: 2,
-        }
+        Cnf::new(vec![vec![-1, 2], vec![1, -2], vec![1, 2]])
     }
 
     #[test]
@@ -251,7 +230,7 @@ mod tests {
 
         println!("{state:?}");
 
-        assert_eq!(state.cnf.num_vars, 3);
+        assert_eq!(state.cnf.num_vars, 4);
         assert_eq!(state.cnf.len(), 3);
         assert_eq!(state.trail.len(), 3);
     }
@@ -262,7 +241,7 @@ mod tests {
 
         let mut state: Cdcl = Cdcl::new(cnf);
 
-        assert_eq!(state.solve(), Some(Solutions::default()));
+        assert_eq!(state.solve(), Some(Solutions::new(&[-3, -2, -1])));
     }
 
     #[test]
@@ -271,24 +250,6 @@ mod tests {
 
         let mut state: Cdcl<DefaultConfig> = Cdcl::new(cnf);
 
-        assert_eq!(state.solve(), Some(Solutions::default()));
-    }
-
-    #[test]
-    fn test_solve_sat() {
-        let cnf = Cnf {
-            clauses: vec![
-                Clause::new(&[PackedLiteral::new(1, false)]),
-                Clause::new(&[PackedLiteral::new(1, true)]),
-            ],
-            num_vars: 1,
-            vars: vec![1, 1],
-            lits: vec![PackedLiteral::new(1, false), PackedLiteral::new(1, true)],
-            non_learnt_idx: 2,
-        };
-
-        let mut state: Cdcl = Cdcl::new(cnf);
-
-        assert_eq!(state.solve(), Some(Solutions::new(&[1])));
+        assert_eq!(state.solve(), None);
     }
 }

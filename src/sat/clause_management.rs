@@ -8,7 +8,7 @@ use crate::sat::trail::Trail;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Debug;
 
-pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug {
+pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + Default {
     fn new(clauses: &[Clause<L, S>]) -> Self;
     fn on_conflict(&mut self, cnf: &mut Cnf<L, S>);
     fn should_clean_db(&self) -> bool;
@@ -170,7 +170,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         let clause = &mut cnf[c_ref];
         clause.bump_activity(1.0);
     }
-    
+
     fn num_removed(&self) -> usize {
         self.num_removed
     }

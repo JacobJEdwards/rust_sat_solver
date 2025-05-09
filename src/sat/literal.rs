@@ -1,5 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-use std::fmt::{Debug};
+use std::fmt::Debug;
 use std::hash::Hash;
 
 pub type Variable = u32;
@@ -48,44 +48,6 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
         Self::new(var as Variable, polarity)
     }
 }
-
-//
-// impl Literal for u32 {
-//     fn new(var: Variable, polarity: bool) -> Self {
-//         var | ((u32::from(polarity)) << 31)
-//     }
-//
-//     fn variable(self) -> Variable {
-//         self & 0x7FFF_FFFF
-//     }
-//
-//     fn polarity(self) -> bool {
-//         (self >> 31) != 0
-//     }
-//
-//     fn negated(self) -> Self {
-//         self ^ (1 << 31)
-//     }
-// }
-//
-// impl Literal for i32 {
-//     fn new(var: Variable, polarity: bool) -> Self {
-//         let p = i32::from(!polarity);
-//         var as i32 * (1 - 2 * p)
-//     }
-//
-//     fn variable(self) -> Variable {
-//         self.unsigned_abs()
-//     }
-//
-//     fn polarity(self) -> bool {
-//         self.is_positive()
-//     }
-//
-//     fn negated(self) -> Self {
-//         -self
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct PackedLiteral(u32);
@@ -188,6 +150,12 @@ impl Literal for NegativeLiteral {
     fn negated(self) -> Self {
         Self(-self.0)
     }
+}
+
+pub fn convert<T: Literal, U: Literal>(lit: &T) -> U {
+    let var = lit.variable();
+    let polarity = lit.polarity();
+    U::new(var, polarity)
 }
 
 #[cfg(test)]

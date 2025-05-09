@@ -1,11 +1,12 @@
 use crate::sat::cdcl::Cdcl;
 use crate::sat::cnf::Cnf;
 use crate::sat::dimacs::parse_file;
-use crate::sat::solver::{DefaultConfig, Solutions, Solver};
+use crate::sat::solver::{DefaultConfig, SolutionStats, Solutions, Solver};
 use clap::{Args, Parser, Subcommand};
 use itertools::Itertools;
 use std::time::Duration;
 use tikv_jemalloc_ctl::{epoch, stats};
+use crate::sat::dpll::Dpll;
 
 mod nonogram;
 mod sat;
@@ -35,7 +36,7 @@ enum Commands {
         /// Path to the DIMACS .cnf file
         #[arg(short, long)]
         path: String,
-        
+
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -45,7 +46,7 @@ enum Commands {
         /// Literal CNF input as a string
         #[arg(short, long)]
         input: String,
-        
+
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -58,7 +59,7 @@ enum Commands {
 
         #[arg(short, long, default_value_t = false)]
         export_dimacs: bool,
-        
+
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -68,7 +69,7 @@ enum Commands {
         /// Path to the Sudoku file
         #[arg(short, long)]
         path: String,
-        
+
         #[command(flatten)]
         common: CommonOptions,
     },
@@ -91,6 +92,10 @@ struct CommonOptions {
     /// Enable print solution
     #[arg(short, long, default_value_t = false)]
     print_solution: bool,
+
+    /// Solver type
+    #[arg(short, long, default_value_t = String::from("cdcl"))]
+    solver: String,
 }
 
 fn main() {
@@ -99,19 +104,15 @@ fn main() {
     if let Some(path) = cli.path.clone() {
         if cli.command.is_none() {
             let time = std::time::Instant::now();
-            let cnf = parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
+            let cnf =
+                parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
             let elapsed = time.elapsed();
-            
-            solve_and_report(
-                cnf,
-                cli.common,
-                Some(&path),
-                elapsed,
-            );
+
+            solve_and_report(cnf, cli.common, Some(&path), elapsed);
             return;
         }
     }
-    
+
     match cli.command {
         Some(Commands::File { path, common }) => {
             let time = std::time::Instant::now();
@@ -119,12 +120,7 @@ fn main() {
                 parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
             let elapsed = time.elapsed();
 
-            solve_and_report(
-                cnf,
-                common,
-                Some(&path),
-                elapsed,
-            );
+            solve_and_report(cnf, common, Some(&path), elapsed);
         }
 
         Some(Commands::Text { input, common }) => {
@@ -133,12 +129,7 @@ fn main() {
             let cnf = Cnf::from(clauses);
             let elapsed = time.elapsed();
 
-            solve_and_report(
-                cnf,
-                common,
-                None,
-                elapsed,
-            );
+            solve_and_report(cnf, common, None, elapsed);
         }
         Some(Commands::Sudoku {
             path,
@@ -165,7 +156,7 @@ fn main() {
                     }
 
                     let parse_time = time.elapsed();
-                    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, Some(&path));
+                    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, Some(&path), &common.solver);
                     let allocated = stats::allocated::mib().unwrap().read().unwrap() as f64;
                     let resident = stats::resident::mib().unwrap().read().unwrap() as f64;
                     let allocated = allocated / 1024.0 / 1024.0;
@@ -183,8 +174,8 @@ fn main() {
                             &solver,
                             allocated,
                             resident,
-                            sol.is_some(),
-                            common.print_solution
+                            common.print_solution,
+                            &sol
                         );
                     }
 
@@ -210,7 +201,7 @@ fn main() {
                     let cnf = nonogram.to_cnf();
 
                     let parse_time = time.elapsed();
-                    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, Some(&path));
+                    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, Some(&path), &common.solver);
                     let allocated = stats::allocated::mib().unwrap().read().unwrap() as f64;
                     let resident = stats::resident::mib().unwrap().read().unwrap() as f64;
                     let allocated = allocated / 1024.0 / 1024.0;
@@ -228,8 +219,8 @@ fn main() {
                             &solver,
                             allocated,
                             resident,
-                            sol.is_some(),
-                            common.print_solution
+                            common.print_solution,
+                            &sol
                         );
                     }
 
@@ -267,23 +258,38 @@ fn verify_solution(cnf: Cnf, sol: &Option<Solutions>) {
     }
 }
 
-fn solve(cnf: Cnf, debug: bool, label: Option<&str>) -> (Option<Solutions>, Duration, impl Solver) {
+fn solve(cnf: Cnf, debug: bool, label: Option<&str>, solver_name: &str) -> (Option<Solutions>,
+                                                                        Duration, SolutionStats) {
     if let Some(name) = label {
         println!("Solving: {:?}", name);
     }
-    
+
     if debug {
         println!("CNF: {}", cnf);
         println!("Variables: {}", cnf.num_vars);
         println!("Clauses: {}", cnf.clauses.len());
         println!("Literals: {}", cnf.lits.len());
     }
-    
+
+    if solver_name.to_lowercase() == "dpll" {
+        return solve_dpll(cnf, debug);
+    }
+
+    if solver_name.to_lowercase() == "cdcl" {
+        return solve_cdcl(cnf, debug);
+    }
+
+    panic!("Unknown solver name {}", solver_name);
+}
+
+fn solve_cdcl(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionStats) {
     epoch::advance().unwrap();
 
     let time = std::time::Instant::now();
-    let mut solver: Cdcl<DefaultConfig> = Solver::new(cnf);
+
+    let mut solver = Cdcl::<DefaultConfig>::new(cnf);
     let sol = solver.solve();
+
     let elapsed = time.elapsed();
 
     if debug {
@@ -291,18 +297,31 @@ fn solve(cnf: Cnf, debug: bool, label: Option<&str>) -> (Option<Solutions>, Dura
         println!("Time: {:?}", elapsed);
     }
 
-    (sol, elapsed, solver)
+    (sol, elapsed, solver.stats())
 }
 
-fn solve_and_report(
-    cnf: Cnf,
-    common: CommonOptions,
-    label: Option<&str>,
-    parse_time: Duration,
-) {
+fn solve_dpll(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionStats) {
     epoch::advance().unwrap();
 
-    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, label);
+    let time = std::time::Instant::now();
+
+    let mut solver = Dpll::<DefaultConfig>::new(cnf);
+    let sol = solver.solve();
+
+    let elapsed = time.elapsed();
+
+    if debug {
+        println!("Solution: {:?}", sol);
+        println!("Time: {:?}", elapsed);
+    }
+
+    (sol, elapsed, solver.stats())
+}
+
+fn solve_and_report(cnf: Cnf, common: CommonOptions, label: Option<&str>, parse_time: Duration) {
+    epoch::advance().unwrap();
+
+    let (sol, elapsed, solver) = solve(cnf.clone(), common.debug, label, &common.solver);
 
     epoch::advance().unwrap();
 
@@ -324,8 +343,8 @@ fn solve_and_report(
             &solver,
             allocated,
             resident,
-            sol.is_some(),
-            common.print_solution
+            common.print_solution,
+            &sol
         );
     }
 }
@@ -362,13 +381,12 @@ fn print_stats(
     parse_time: Duration,
     elapsed: Duration,
     cnf: &Cnf,
-    solver: &impl Solver,
+    s: &SolutionStats,
     allocated: f64,
     resident: f64,
-    sol_found: bool,
     print_solution: bool,
+    solutions: &Option<Solutions>,
 ) {
-    let s = solver.stats();
     let elapsed_secs = elapsed.as_secs_f64();
 
     println!("\n=======================[ Problem Statistics ]=========================");
@@ -388,13 +406,14 @@ fn print_stats(
     stat_line("Resident memory (MB)", resident);
     stat_line("CPU time (s)", elapsed_secs);
     println!("=====================================================================");
-    
-    if print_solution && sol_found {
-        let solution = solver.solutions();
-        println!("Solutions: {solution}");
+
+    if let Some(solutions) = solutions {
+        if print_solution {
+            println!("Solutions: {}", solutions);
+        }
     }
 
-    if sol_found {
+    if solutions.is_some() {
         println!("\nSATISFIABLE");
     } else {
         println!("\nUNSATISFIABLE");

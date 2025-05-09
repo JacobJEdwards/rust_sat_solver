@@ -1,6 +1,7 @@
 use crate::sat::assignment::VecAssignment;
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause::Clause;
+use crate::sat::clause_management::LbdClauseManagement;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
@@ -9,10 +10,11 @@ use crate::sat::restarter::Luby;
 use crate::sat::solver::SolverConfig;
 use crate::sat::solver::{Solutions, Solver};
 use crate::sat::variable_selection::Vsids;
+use crate::solver_config;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::num::NonZeroI32;
-use crate::sat::clause_management::LbdClauseManagement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TheoryConstraint {
@@ -29,24 +31,24 @@ pub struct SmtSolver<L: Literal, S: LiteralStorage<L>> {
     var_values: HashMap<String, i32>,
 }
 
-#[derive(Debug, Clone)]
-struct LiteralConfig<L: Literal>(PhantomData<*const L>);
-
-impl<L: Literal> SolverConfig for LiteralConfig<L> {
-    type Assignment = VecAssignment;
-    type VariableSelector = Vsids;
-    type Literal = L;
-    type LiteralStorage = Vec<L>;
-    type Restarter = Luby<50>;
-    type Propagator = WatchedLiterals<L, Self::LiteralStorage, Self::Assignment>;
-    type ClauseManager = LbdClauseManagement<Self::Literal, Self::LiteralStorage, 10>;
+solver_config! {
+    <L: Literal>
+    LiteralConfig {
+        Literal = L,
+        LiteralStorage = Vec<L>,
+        Assignment = VecAssignment,
+        VariableSelector = Vsids,
+        Propagator = WatchedLiterals<L, Vec<L>, VecAssignment>,
+        Restarter = Luby<2>,
+        ClauseManager = LbdClauseManagement<L, Vec<L>, 10>,
+    }
 }
 
 impl<L: Literal> SmtSolver<L, Vec<L>> {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            cnf: Cnf::<L, Vec<L>>::new(Vec::new()),
+            cnf: Cnf::<L, Vec<L>>::new(Vec::<Vec<i32>>::new()),
             theory_constraints: Vec::new(),
             var_mappings: HashMap::new(),
             var_values: HashMap::new(),

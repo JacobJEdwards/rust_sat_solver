@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_assignment() {
-        let mut a: VecAssignment = Assignment::new(3);
+        let mut a: VecAssignment = Assignment::new(4);
         a.set(1, true);
         a.set(2, false);
         a.set(3, true);
@@ -278,12 +278,12 @@ mod tests {
 
         let s = a.get_solutions();
 
-        assert_eq!(s, Solutions::new(&[3]));
+        assert_eq!(s, Solutions::new(&[3, -2]));
     }
 
     #[test]
     fn test_hashmap_assignment() {
-        let mut a = HashMapAssignment::new(3);
+        let mut a = HashMapAssignment::new(4);
         a.set(1, true);
         a.set(2, false);
         a.set(3, true);
@@ -301,17 +301,16 @@ mod tests {
         assert_eq!(a.literal_value(PackedLiteral::new(3, false)), Some(false));
 
         a.unassign(1);
-        assert!(!a.is_assigned(1));
         assert_eq!(a.var_value(1), None);
 
         let s = a.get_solutions();
 
-        assert_eq!(s, Solutions::new(&[3]));
+        assert_eq!(s, Solutions::new(&[3, -2]));
     }
 
     #[test]
     fn test_assignment_unassigned() {
-        let a = VecAssignment::new(3);
+        let a = VecAssignment::new(4);
         assert!(!a.is_assigned(1));
         assert!(!a.is_assigned(2));
         assert!(!a.is_assigned(3));

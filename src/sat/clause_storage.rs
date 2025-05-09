@@ -1,3 +1,4 @@
+use crate::sat::literal;
 use crate::sat::literal::Literal;
 use smallvec::SmallVec;
 use std::fmt::Debug;
@@ -122,4 +123,10 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
     fn swap_remove(&mut self, index: usize) -> L {
         self.swap_remove(index)
     }
+}
+
+pub fn convert<L: Literal, U: Literal, S: LiteralStorage<U>, T: LiteralStorage<L>>(
+    literals: &T,
+) -> Vec<U> {
+    literals.iter().map(literal::convert::<L, U>).collect()
 }

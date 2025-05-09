@@ -466,6 +466,9 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
     let mut board = vec![vec![0; size]; size];
 
     for (i, line) in lines.iter().enumerate() {
+        if line.is_empty() {
+            continue;
+        }
         for (j, c) in line.split_ascii_whitespace().enumerate() {
             if let Ok(num) = c.parse::<usize>() {
                 if num > size {

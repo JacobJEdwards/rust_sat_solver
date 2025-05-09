@@ -13,6 +13,8 @@ fastrand = "2.3.0"
 rustc-hash = "2.1.1"
 clap = { version = "4.5.29", features = ["derive"] }
 tikv-jemalloc-ctl = { version = "0.6.0", features = ["stats"] }
+sat_solver_macros = { path = "sat_solver_macros" }
+
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

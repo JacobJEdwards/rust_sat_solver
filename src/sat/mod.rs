@@ -5,6 +5,7 @@ pub mod clause;
 pub mod clause_management;
 pub mod clause_storage;
 pub mod cnf;
+mod configs;
 pub mod conflict_analysis;
 pub mod dimacs;
 pub mod dpll;

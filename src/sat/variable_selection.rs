@@ -147,7 +147,7 @@ impl<L: Literal> VariableSelection<L> for VsidsHeap {
             }
 
             if assignment[entry.lit_idx / 2].is_unassigned() {
-                self.num_decisions = self.num_decisions.wrapping_add( 1);
+                self.num_decisions = self.num_decisions.wrapping_add(1);
                 return Some(L::from_index(entry.lit_idx));
             }
         }
@@ -360,7 +360,7 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
         let mut rand = Rng::with_seed(0);
         let mut indices: Vec<usize> = (1..num_vars).collect();
         rand.shuffle(indices.as_mut_slice());
-        
+
         Self {
             vars: indices,
             rand: RefCell::new(Rng::new()),
@@ -374,7 +374,7 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
         #![allow(clippy::cast_possible_truncation)]
 
         let mut rng = self.rand.borrow_mut();
-        
+
         for i in &self.vars {
             if assignment[*i].is_unassigned() {
                 let polarity = rng.bool();

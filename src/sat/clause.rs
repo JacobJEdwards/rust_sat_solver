@@ -227,6 +227,16 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
         }
     }
 
+    pub fn convert<T: Literal, U: LiteralStorage<T>>(&self) -> Clause<T, U> {
+        let literals = self
+            .literals
+            .iter()
+            .map(|lit| T::new(lit.variable(), lit.polarity()))
+            .collect_vec();
+
+        Clause::new(&literals)
+    }
+
     pub fn bump_activity(&mut self, increment: f64) {
         self.activity += increment;
     }
@@ -298,6 +308,22 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
             activity: OrderedFloat::from(0.0),
             data: PhantomData,
         }
+    }
+}
+
+impl<L: Literal, S: LiteralStorage<L>> FromIterator<i32> for Clause<L, S> {
+    fn from_iter<I: IntoIterator<Item = i32>>(iter: I) -> Self {
+        let literals = iter
+            .into_iter()
+            .map(|l| {
+                let pol = l.is_positive();
+                let var = l.unsigned_abs();
+
+                L::new(var, pol)
+            })
+            .collect_vec();
+
+        Self::new(&literals)
     }
 }
 

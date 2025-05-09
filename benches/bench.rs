@@ -1,30 +1,32 @@
-use criterion::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::measurement::Measurement;
+use criterion::{
+    black_box, criterion_group, criterion_main, BenchmarkGroup, Criterion, /* Throughput, */
+};
 use itertools::Itertools;
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
+use sat_solver::sat::clause_management::{
+    ClauseManagement, LbdClauseManagement, NoClauseManagement,
+};
 use sat_solver::sat::clause_storage::LiteralStorage;
 use sat_solver::sat::cnf::Cnf;
+use sat_solver::sat::dimacs;
 use sat_solver::sat::dpll::Dpll;
 use sat_solver::sat::literal::{
     DoubleLiteral, Literal, NegativeLiteral, PackedLiteral, StructLiteral,
 };
-use sat_solver::sat::clause_management::{
-    LbdClauseManagement, ClauseManagement, NoClauseManagement
-};
-use sat_solver::sat::preprocessing::Preprocessor;
 use sat_solver::sat::preprocessing::{
-    PureLiteralElimination, SubsumptionElimination, TautologyElimination,
+    Preprocessor, PureLiteralElimination, SubsumptionElimination, TautologyElimination,
 };
 use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Fixed, Geometric, Linear, Luby, Never, Restarter};
-use sat_solver::sat::solver::{solver_config, Solver, SolverConfig};
+use sat_solver::sat::solver::{solver_config, DefaultConfig, Solver, SolverConfig};
 use sat_solver::sat::variable_selection::{
-    FixedOrder, JeroslowWangOneSided, VariableSelection, Vsids, VsidsHeap,
+    FixedOrder, JeroslowWangOneSided, JeroslowWangTwoSided, VariableSelection, Vsids, VsidsHeap,
 };
-use sat_solver::sudoku::solver::{Board, Sudoku, EXAMPLE_SIXTEEN};
 use smallvec::SmallVec;
 use std::fmt::Debug;
+use std::path::Path;
 use std::time::Duration;
 
 #[global_allocator]
@@ -121,682 +123,318 @@ solver_config! (
     }
 );
 
-fn bench_sudoku(c: &mut Criterion) {
-    let board = EXAMPLE_SIXTEEN.iter().map(|x| x.to_vec()).collect_vec();
-
-    let sudoku = Sudoku::new(Board::from(board));
-    let cnf = sudoku.to_cnf();
-
-    c.bench_function("sudoku - vec assignment", |b| {
-        b.iter(|| {
-            let mut state: Cdcl = Solver::new(cnf.clone());
-            let sol = state.solve();
-            black_box(sol);
-        })
-    });
-
-    c.bench_function("sudoku - hash map assignment", |b| {
-        b.iter(|| {
-            let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
-            let sol = state.solve();
-            black_box(sol);
-        })
-    });
-}
-
-fn solve_3sat<Config: SolverConfig>() {
-    for i in 1..1000 {
-        let file = format!("data/uf20-91/uf20-0{}.cnf", i);
-        let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
-        let mut state: Cdcl<Config> = Solver::new(cnf.clone());
-        let sol = state.solve();
-        black_box(sol);
-    }
-}
-
-fn solve_graph_colouring<Config: SolverConfig>() {
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
-        let mut state: Cdcl<Config> = Solver::new(cnf.clone());
-        let sol = state.solve();
-        if !cnf.verify(&sol.clone().unwrap()) {
-            eprintln!("Failed to verify solution for {}", file);
-        }
-        black_box(sol);
-    }
-}
-
-fn solve_graph_colouring_with_preprocessors(
-    tautology_elimination: bool,
-    pure_literal: bool,
-    subsumption_elimination: bool,
-) {
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        let cnf = sat_solver::sat::dimacs::parse_file(&file).unwrap();
-        let mut clauses = cnf.clauses;
-
-        if tautology_elimination {
-            clauses = TautologyElimination.preprocess(&clauses);
-        }
-        if pure_literal {
-            clauses = PureLiteralElimination.preprocess(&clauses);
-        }
-        if subsumption_elimination {
-            clauses = SubsumptionElimination.preprocess(&clauses);
-        }
-
-        let cnf = Cnf::from(clauses);
-
-        let mut state: Cdcl = Solver::new(cnf);
-
-        let sol = state.solve();
-        black_box(sol);
-    }
-}
-
-fn bench_3sat(c: &mut Criterion) {
+fn load_cnfs(dir: &str) -> Vec<Cnf> {
     let mut cnfs = Vec::new();
-    for i in 1..1000 {
-        let file = format!("data/uf20-91/uf20-0{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
+    println!("Loading CNFs from {}", dir);
+    let dir = Path::new(dir);
+    if !dir.exists() || !dir.is_dir() {
+        eprintln!("Directory {} does not exist.", dir.display());
+        return cnfs;
+    }
+    for entry in dir.read_dir().expect("Failed to read directory") {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_file() {
+            let file_path = entry.path();
+            if file_path.extension().and_then(|s| s.to_str()) == Some("cnf") {
+                match dimacs::parse_file(file_path.to_str().expect("Invalid UTF-8")) {
+                    Ok(cnf) => cnfs.push(cnf),
+                    Err(_) => eprintln!("Failed to parse file"),
+                }
+            }
         }
     }
+    println!("Loaded {} CNF files.", cnfs.len());
+    if cnfs.is_empty() {
+        eprintln!(
+            "Warning: No CNF files were loaded. Benchmarks might not run correctly. Check the \
+            path pattern: {:?}",
+            dir,
+        );
+    }
+    cnfs
+}
 
-    let mut group = c.benchmark_group("3sat - restarter");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
+fn run_solver_benchmark<M, S, C>(
+    group: &mut BenchmarkGroup<M>,
+    name: &str,
+    cnfs: &[Cnf<C::Literal, C::LiteralStorage>],
+) where
+    M: Measurement,
+    C: SolverConfig,
+    S: Solver<C>,
+{
+    if cnfs.is_empty() {
+        println!("Skipping benchmark '{}' due to no loaded CNFs.", name);
+        return;
+    }
 
-    group.bench_function("Luby (1x)", |b| {
+    group.bench_function(name, |b| {
         b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<1>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Luby (2x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<2>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Luby (5x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<5>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Luby (5x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<10>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Geometric (x4)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric<4>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Linear (N restarts * 100)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Linear<100>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Exponential", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric<2>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Never", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Never>> = Solver::new(cnf.clone());
-                black_box(state.solve());
+            for cnf in cnfs {
+                let mut solver = S::new(cnf.clone());
+                black_box(solver.solve());
             }
         })
     });
 }
 
-fn bench_graph_colouring(c: &mut Criterion) {
-    let mut group = c.benchmark_group("graph_colouring - Variable selection");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
+fn bench_solvers(c: &mut Criterion) {
+    let cnfs = load_cnfs("data/flat30-60");
 
-    let mut cnfs = Vec::new();
+    {
+        let mut group = c.benchmark_group("graph_colouring - Variable selection");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        run_solver_benchmark::<_, Cdcl<SelectorConfig<VsidsHeap>>, _>(
+            &mut group,
+            "Vsids heap",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<SelectorConfig<Vsids>>, _>(&mut group, "Vsids", &cnfs);
+        run_solver_benchmark::<_, Cdcl<SelectorConfig<JeroslowWangOneSided>>, _>(
+            &mut group,
+            "Jeroslow-Wang one sided",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<SelectorConfig<JeroslowWangTwoSided>>, _>(
+            &mut group,
+            "Jeroslow-Wang two sided",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<SelectorConfig<FixedOrder>>, _>(
+            &mut group,
+            "Fixed Order",
+            &cnfs,
+        );
+
+        group.finish();
     }
 
-    // group.bench_function("Random Order", |b| {
-    //     b.iter(|| {
-    //         for cnf in &cnfs {
-    //             let mut state: Cdcl<SelectorConfig<RandomOrder>> = Solver::new(cnf.clone());
-    //             black_box(state.solve());
-    //         }
-    //     })
-    // });
+    {
+        let mut group = c.benchmark_group("graph_colouring - literal layout");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("Vsids heap", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<VsidsHeap>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<LiteralConfig<NegativeLiteral>>, _>(
+            &mut group, "Negated", &cnfs,
+        );
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<LiteralConfig<DoubleLiteral>>, _>(
+            &mut group, "Doubled", &cnfs,
+        );
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<LiteralConfig<PackedLiteral>>, _>(
+            &mut group, "Packed", &cnfs,
+        );
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<LiteralConfig<StructLiteral>>, _>(
+            &mut group, "Struct", &cnfs,
+        );
 
-    group.bench_function("Vsids", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<Vsids>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Jeroslow-Wang one sided", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<JeroslowWangOneSided>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Jeroslow-Wang two sided", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<JeroslowWangOneSided>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Fixed Order", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<SelectorConfig<FixedOrder>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-
-    group.finish();
-
-    let mut group = c.benchmark_group("graph_colouring - literal layout");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    group.bench_function("Negated", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<NegativeLiteral>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+    {
+        let mut group = c.benchmark_group("graph_colouring - restart strategy");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    let mut cnfs = Vec::new();
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Luby<1>>>, _>(
+            &mut group,
+            "Luby (1x)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Luby<2>>>, _>(
+            &mut group,
+            "Luby (2x)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Luby<5>>>, _>(
+            &mut group,
+            "Luby (5x)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Luby<10>>>, _>(
+            &mut group,
+            "Luby (10x)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Fixed<100>>>, _>(
+            &mut group,
+            "Fixed (every 100)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Geometric<2>>>, _>(
+            &mut group,
+            "Geometric (x2)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Geometric<4>>>, _>(
+            &mut group,
+            "Geometric (x4)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Linear<100>>>, _>(
+            &mut group,
+            "Linear (n restarts x 100)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<RestarterConfig<Never>>, _>(&mut group, "Never", &cnfs);
 
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    group.bench_function("Doubled", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<DoubleLiteral>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+    {
+        let mut group = c.benchmark_group("graph_colouring - Assignment type");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    let mut cnfs = Vec::new();
+        run_solver_benchmark::<_, Cdcl<AssignmentConfig<VecAssignment>>, _>(
+            &mut group, "Vec", &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<AssignmentConfig<HashMapAssignment>>, _>(
+            &mut group, "Hashmap", &cnfs,
+        );
 
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    group.bench_function("Packed", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<PackedLiteral>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+    {
+        let mut group = c.benchmark_group("graph_colouring - Preprocessing");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    let mut cnfs = Vec::new();
+        type BaseSolver = Cdcl<DefaultConfig>;
 
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.bench_function("Tautology Removal", |b| {
+            b.iter(|| {
+                for cnf_orig in &cnfs {
+                    let clauses = TautologyElimination.preprocess(cnf_orig.clauses.as_ref());
+                    let cnf_processed = Cnf::from(clauses);
+                    let mut state = BaseSolver::new(cnf_processed);
+                    black_box(state.solve());
+                }
+            })
+        });
+
+        group.bench_function("Pure Literal Elimination", |b| {
+            b.iter(|| {
+                for cnf_orig in &cnfs {
+                    let clauses = PureLiteralElimination.preprocess(cnf_orig.clauses.as_ref());
+                    let cnf_processed = Cnf::from(clauses);
+                    let mut state = BaseSolver::new(cnf_processed);
+                    black_box(state.solve());
+                }
+            })
+        });
+
+        group.bench_function("Subsumption", |b| {
+            b.iter(|| {
+                for cnf_orig in &cnfs {
+                    let clauses = SubsumptionElimination.preprocess(cnf_orig.clauses.as_ref());
+                    let cnf_processed = Cnf::from(clauses);
+                    let mut state = BaseSolver::new(cnf_processed);
+                    black_box(state.solve());
+                }
+            })
+        });
+
+        run_solver_benchmark::<_, BaseSolver, _>(&mut group, "No Preprocessing", &cnfs);
+
+        group.finish();
     }
 
-    group.bench_function("Struct", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralConfig<StructLiteral>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+    {
+        let mut group = c.benchmark_group("graph_colouring - Propagator");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    group.finish();
+        type WatchedPropConfig = PropagatorConfig<
+            WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        >;
+        type UnitSearchPropConfig = PropagatorConfig<
+            UnitSearch<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
+        >;
 
-    let mut cnfs = Vec::new();
+        run_solver_benchmark::<_, Cdcl<WatchedPropConfig>, _>(&mut group, "WatchedLiterals", &cnfs);
+        run_solver_benchmark::<_, Cdcl<UnitSearchPropConfig>, _>(
+            &mut group,
+            "Linear checking",
+            &cnfs,
+        );
 
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    let mut group = c.benchmark_group("graph_colouring - restart strategy");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
+    {
+        let mut group = c.benchmark_group("graph_colouring - Literal Storage");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("Luby (1x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<1>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+        type SmallVec8StorageConfig = LiteralStorageConfig<SmallVec<[PackedLiteral; 8]>>;
+        type SmallVec16StorageConfig = LiteralStorageConfig<SmallVec<[PackedLiteral; 16]>>;
+        type VecStorageConfig = LiteralStorageConfig<Vec<PackedLiteral>>;
 
-    group.bench_function("Luby (2x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<2>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<SmallVec8StorageConfig>, _>(
+            &mut group,
+            "SmallVec (8)",
+            &cnfs,
+        );
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<SmallVec16StorageConfig>, _>(
+            &mut group,
+            "SmallVec (16)",
+            &cnfs,
+        );
+        let cnfs = cnfs.iter().map(Cnf::convert).collect_vec();
+        run_solver_benchmark::<_, Cdcl<VecStorageConfig>, _>(&mut group, "Vec", &cnfs);
 
-    group.bench_function("Luby (5x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<5>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Luby (10x)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Luby<10>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Fixed (every 100)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Fixed<100>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Geometric (x4)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric<4>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Linear (n restarts x 100)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Linear<100>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Exponential", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Geometric<2>>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Never", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<RestarterConfig<Never>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
-    let mut group = c.benchmark_group("graph_colouring - Assignment type");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    group.bench_function("Vec", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<AssignmentConfig<VecAssignment>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Hashmap", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<AssignmentConfig<HashMapAssignment>> = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
-    let mut group = c.benchmark_group("graph_colouring - Preprocessing");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    let cnfs_for_preprocessors = cnfs.clone();
+    {
+        let mut group = c.benchmark_group("graph_colouring - CDCL vs DPLL");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("Tautology Removal", |b| {
-        b.iter(|| {
-            for cnf in &cnfs_for_preprocessors {
-                let cnf = Cnf::from(TautologyElimination.preprocess(&cnf.clauses));
-                let mut state: Cdcl = Solver::new(cnf);
-                black_box(state.solve());
-            }
-        })
-    });
+        run_solver_benchmark::<_, Cdcl, _>(&mut group, "CDCL", &cnfs);
+        run_solver_benchmark::<_, Dpll, _>(&mut group, "DPLL", &cnfs);
 
-    group.bench_function("Pure Literal Elimination", |b| {
-        b.iter(|| {
-            for cnf in &cnfs_for_preprocessors {
-                let cnf = Cnf::from(PureLiteralElimination.preprocess(&cnf.clauses));
-
-                let mut state: Cdcl = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("Subsumption", |b| {
-        b.iter(|| {
-            for cnf in &cnfs_for_preprocessors {
-                let cnf = Cnf::from(SubsumptionElimination.preprocess(&cnf.clauses));
-                let mut state: Cdcl = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
 
-    let mut group = c.benchmark_group("graph_colouring - Propagator");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
+    {
+        let mut group = c.benchmark_group("graph_colouring - Clause Management");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
 
-    group.bench_function("WatchedLiterals", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<
-                    PropagatorConfig<
-                        WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-                    >,
-                > = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+        type Lbd10ClauseManagerConfig = ClauseManagerConfig<
+            LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
+        >;
+        type Lbd25ClauseManagerConfig = ClauseManagerConfig<
+            LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 25>,
+        >;
+        type NoMgmtClauseManagerConfig =
+            ClauseManagerConfig<NoClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>>>;
 
-    group.bench_function("Linear checking", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<
-                    PropagatorConfig<
-                        UnitSearch<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
-                    >,
-                > = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
+        run_solver_benchmark::<_, Cdcl<Lbd10ClauseManagerConfig>, _>(
+            &mut group,
+            "LBD (check every 10)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<Lbd25ClauseManagerConfig>, _>(
+            &mut group,
+            "LBD (check every 25)",
+            &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<NoMgmtClauseManagerConfig>, _>(&mut group, "None", &cnfs);
 
-    group.finish();
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
+        group.finish();
     }
-
-    let mut group = c.benchmark_group("graph_colouring - Literal Storage");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-    group.bench_function("Vec", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 8]>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
-    }
-
-    group.bench_function("SmallVec (8)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 8]>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
-    }
-
-    group.bench_function("SmallVec (16)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<LiteralStorageConfig<SmallVec<[PackedLiteral; 16]>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
-    }
-
-    let mut group = c.benchmark_group("graph_colouring - CDCL / DPLL");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    group.bench_function("CDCL", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("DPLL", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Dpll = Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
-
-    let mut cnfs = Vec::new();
-
-    for i in 1..100 {
-        let file = format!("data/flat30-60/flat30-{}.cnf", i);
-        match sat_solver::sat::dimacs::parse_file(&file) {
-            Ok(cnf) => cnfs.push(cnf),
-            Err(e) => eprintln!("Failed to parse {}: {}", file, e),
-        }
-    }
-
-    let mut group = c.benchmark_group("graph_colouring - Clause Management");
-    group.sample_size(100);
-    group.measurement_time(Duration::from_secs(20));
-
-    group.bench_function("LBD (check every 10)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<ClauseManagerConfig<LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("LBD (check every 25)", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<ClauseManagerConfig<LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 25>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.bench_function("None", |b| {
-        b.iter(|| {
-            for cnf in &cnfs {
-                let mut state: Cdcl<ClauseManagerConfig<NoClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>>>> =
-                    Solver::new(cnf.clone());
-                black_box(state.solve());
-            }
-        })
-    });
-
-    group.finish();
 }
 
-criterion_group!(benches, bench_graph_colouring);
-
+criterion_group!(benches, bench_solvers);
 criterion_main!(benches);

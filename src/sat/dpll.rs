@@ -78,7 +78,7 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
             propagations: self.cnf.num_vars - self.decision_level,
             restarts: 0,
             learnt_clauses: 0,
-            removed_clauses: 0
+            removed_clauses: 0,
         }
     }
 

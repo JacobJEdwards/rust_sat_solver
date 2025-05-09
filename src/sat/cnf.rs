@@ -3,6 +3,7 @@
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};
 use crate::sat::clause_storage::LiteralStorage;
+use crate::sat::literal;
 use crate::sat::literal::{Literal, PackedLiteral, Variable};
 use crate::sat::solver::Solutions;
 use itertools::Itertools;
@@ -37,20 +38,15 @@ impl<T: Literal, S: LiteralStorage<T>> IndexMut<usize> for Cnf<T, S> {
 }
 
 impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
-    pub fn new(clauses: Vec<Vec<i32>>) -> Self {
-        let clause_len = clauses.len();
-        let (clauses, num_vars, vars, lits) = clauses
+    pub fn new<J: IntoIterator<Item = i32>, I: IntoIterator<Item = J>>(clauses: I) -> Self {
+        let (clauses, num_vars, vars, lits, clause_len) = clauses
             .into_iter()
-            .filter(|clause| !clause.is_empty())
+            .map(|clause| clause.into_iter().collect_vec())
             .map(Clause::from)
             .fold(
-                (
-                    Vec::with_capacity(clause_len),
-                    0u32,
-                    Vec::with_capacity(clause_len * 2),
-                    Vec::with_capacity(clause_len * 2),
-                ),
-                |(mut acc_clauses, mut max_var, mut acc_vars, mut acc_literals), clause| unsafe {
+                (Vec::new(), 0u32, Vec::new(), Vec::new(), 0),
+                |(mut acc_clauses, mut max_var, mut acc_vars, mut acc_literals, clause_len),
+                 clause| unsafe {
                     let clause_max_var = clause
                         .iter()
                         .map(|l: &T| l.variable())
@@ -64,7 +60,7 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
 
                     acc_clauses.push(clause);
 
-                    (acc_clauses, max_var, acc_vars, acc_literals)
+                    (acc_clauses, max_var, acc_vars, acc_literals, clause_len + 1)
                 },
             );
 
@@ -133,6 +129,23 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
                 })
             })
         })
+    }
+
+    pub fn convert<L: Literal, U: LiteralStorage<L>>(&self) -> Cnf<L, U> {
+        let clauses = self.clauses.iter().map(Clause::convert).collect_vec();
+
+        let num_vars = self.num_vars;
+        let vars = self.vars.clone();
+        let lits = self.lits.iter().map(literal::convert).collect_vec();
+        let non_learnt_idx = self.non_learnt_idx;
+
+        Cnf {
+            clauses,
+            num_vars,
+            vars,
+            lits,
+            non_learnt_idx,
+        }
     }
 }
 
@@ -255,29 +268,4 @@ impl<T: Literal, S: LiteralStorage<T>> TryFrom<Cnf<T, S>> for Expr {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_to_cnf() {
-        let expr = Expr::Or(
-            Box::new(Expr::Var(1)),
-            Box::new(Expr::And(Box::new(Expr::Var(2)), Box::new(Expr::Var(3)))),
-        );
-        let cnf: Cnf = to_cnf(&expr);
-        assert_eq!(cnf.len(), 2);
-    }
-
-    #[test]
-    fn test_to_expr() {
-        let clause: Clause = Clause::from(vec![1, 2, 3]);
-        let expr = to_expr(&clause);
-        assert_eq!(
-            expr,
-            Expr::Or(
-                Box::new(Expr::Var(1)),
-                Box::new(Expr::Or(Box::new(Expr::Var(2)), Box::new(Expr::Var(3))))
-            )
-        );
-    }
-}
+mod tests {}

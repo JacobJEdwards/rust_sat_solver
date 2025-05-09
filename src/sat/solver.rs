@@ -1,14 +1,9 @@
-use crate::sat::clause_management::{ClauseManagement, LbdClauseManagement};
-use crate::sat::assignment::Assignment;
 use crate::sat::assignment::VecAssignment;
-use crate::sat::clause_storage::LiteralStorage;
+use crate::sat::clause_management::LbdClauseManagement;
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::Literal;
 use crate::sat::literal::PackedLiteral;
-use crate::sat::propagation::Propagator;
 use crate::sat::propagation::WatchedLiterals;
-use crate::sat::restarter::{Luby, Restarter};
-use crate::sat::variable_selection::VariableSelection;
+use crate::sat::restarter::Luby;
 use crate::sat::variable_selection::Vsids;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
@@ -46,9 +41,9 @@ impl Display for Solutions {
             .iter()
             .map(|&i| format!("{}{}", i.get(), if i.get() > 0 { "" } else { "-" }))
             .collect();
-            
+
         write!(f, "{}", assignments.join(" "))
-        }
+    }
 }
 
 impl Solutions {
@@ -81,51 +76,31 @@ impl Solutions {
 
 /// A trait that defines the configuration for a SAT solver.
 /// It includes types for literals, assignment, variable selection,
-pub trait SolverConfig: Debug {
+pub trait SolverConfig: Debug + Clone {
     /// The type of storage of the current assignment.
-    type Assignment: Assignment + Clone;
+    type Assignment: crate::sat::assignment::Assignment;
     /// The variable selection strategy.
-    type VariableSelector: VariableSelection<Self::Literal> + Clone;
+    type VariableSelector: crate::sat::variable_selection::VariableSelection<Self::Literal>;
     /// The type of the literal.
-    type Literal: Literal + Clone;
+    type Literal: crate::sat::literal::Literal;
     /// The type of the literal storage.
-    type LiteralStorage: LiteralStorage<Self::Literal>;
+    type LiteralStorage: crate::sat::clause_storage::LiteralStorage<Self::Literal>;
     /// The restarter strategy.
-    type Restarter: Restarter + Clone;
+    type Restarter: crate::sat::restarter::Restarter;
     /// The unit propagation strategy.
-    type Propagator: Propagator<Self::Literal, Self::LiteralStorage, Self::Assignment> + Clone;
+    type Propagator: crate::sat::propagation::Propagator<
+        Self::Literal,
+        Self::LiteralStorage,
+        Self::Assignment,
+    >;
     /// The clause management strategy.
-    type ClauseManager: ClauseManagement<Self::Literal, Self::LiteralStorage>;
+    type ClauseManager: crate::sat::clause_management::ClauseManagement<
+        Self::Literal,
+        Self::LiteralStorage,
+    >;
 }
 
 /// A macro to define a solver configuration.
-///
-/// # Examples
-///
-/// ```
-/// solver_config! {
-///    MySolverConfig {
-///        Literal = MyLiteral,
-///        LiteralStorage = MyLiteralStorage,
-///        Assignment = MyAssignment,
-///        VariableSelector = MyVariableSelector,
-///        Propagator = MyPropagator,
-///        Restarter = MyRestarter,
-///   }
-/// }
-///
-/// solver_config! {
-///   <T: Debug + Literal>
-///   MyGenericSolverConfig {
-///       Literal = T,
-///       LiteralStorage = MyLiteralStorage<T>,
-///       Assignment = MyAssignment,
-///       VariableSelector = MyVariableSelector,
-///       Propagator = MyPropagator,
-///       Restarter = MyRestarter,
-///   }
-/// }
-/// ```
 #[macro_export]
 macro_rules! solver_config {
     ($name:ident {
@@ -138,7 +113,7 @@ macro_rules! solver_config {
         ClauseManager = $manager:ty,
     }) => {
         /// Generated solver configuration.
-        #[derive(Debug, Clone, Default)]
+        #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub struct $name;
 
         /// Implements the `SolverConfig` trait for the generated configuration.

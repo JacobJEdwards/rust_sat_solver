@@ -3,8 +3,8 @@
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
+use itertools::Itertools;
 use std::io::{self, BufRead};
-
 // panics docs
 
 /// Parses a DIMACS file into a CNF.
@@ -19,13 +19,14 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
         let parts = line.split_whitespace();
 
         match parts.clone().peekable().peek() {
-            Some(&"p" | &"c") => {},
+            Some(&"p" | &"c") => {}
             Some(&"%") | None => break,
             Some(_) => {
                 let clause = parts
                     .map(|s| s.parse().unwrap())
                     .filter(|p| *p != 0)
-                    .collect();
+                    .collect_vec();
+
                 clauses.push(clause);
             }
         }
