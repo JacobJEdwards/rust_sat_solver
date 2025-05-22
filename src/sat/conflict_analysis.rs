@@ -1,5 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-/// Defines functions related to conflict analysis
+//! Defines functions related to conflict analysis
 
 
 use crate::sat::assignment::Assignment;
@@ -18,7 +18,7 @@ pub enum Conflict<T: Literal, S: LiteralStorage<T>> {
     Ground,
     /// The clause is the learnt clause
     Unit(Clause<T, S>),           // (clause)
-    /// The usize is the position of the asserting lit. 
+    /// The usize is the position of the asserting lit.
     /// Maybe unneeded, could just put it in first place.
     Learned(usize, Clause<T, S>), // (s_idx, clause)
     Restart(Clause<T, S>),        // (clause)
@@ -71,8 +71,8 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     /// Apply the resolution rule.
     fn resolve(
         &mut self,
-        c: &mut Clause<T, S>, /// conflict clause
-        o: &Clause<T, S>, /// other clause
+        c: &mut Clause<T, S>, // conflict clause
+        o: &Clause<T, S>, // other clause
         assignment: &impl Assignment,
         idx: Variable,
         c_idx: usize,
@@ -124,7 +124,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         cnf: &Cnf<T, S>,
         trail: &Trail<T, S>,
         assignment: &impl Assignment,
-        cref: usize, /// The clause index
+        cref: usize, // The clause index
     ) -> (Conflict<T, S>, SmallVec<[T; N]>) {
         self.count = self.count.wrapping_add(1);
 
