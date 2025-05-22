@@ -1,3 +1,5 @@
+//! Defines the main DPLL solver
+
 use crate::sat::assignment::Assignment;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;

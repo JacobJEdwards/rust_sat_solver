@@ -1,4 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Module for variable assignment and state management in the SAT solvers.
 use crate::sat::literal::{Literal, Variable};
 use crate::sat::solver::Solutions;
 use core::ops::{Index, IndexMut};

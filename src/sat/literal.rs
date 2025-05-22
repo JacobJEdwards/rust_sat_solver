@@ -4,6 +4,7 @@ use std::hash::Hash;
 
 pub type Variable = u32;
 
+/// Trait that defines the shape of a literal used in the formula
 pub trait Literal: Copy + Debug + Eq + Hash + Default {
     fn new(var: Variable, polarity: bool) -> Self;
     fn variable(self) -> Variable;
@@ -52,22 +53,28 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct PackedLiteral(u32);
 
+/// Extract the variable value
 const VAR_MASK: u32 = 0x7FFF_FFFF;
+/// How far to left shift to get to the polarity bit
 const LSHIFT: u32 = 31;
 
 impl Literal for PackedLiteral {
+    /// O(1) creation
     fn new(var: Variable, polarity: bool) -> Self {
         Self(var & VAR_MASK | ((u32::from(polarity)) << LSHIFT))
     }
 
+    /// O(1)
     fn variable(self) -> Variable {
         self.0 & VAR_MASK
     }
 
+    /// O(1)
     fn polarity(self) -> bool {
         (self.0 >> LSHIFT) != 0
     }
 
+    /// O(1)
     fn negated(self) -> Self {
         Self(self.0 ^ (1 << LSHIFT))
     }
@@ -79,6 +86,7 @@ pub struct StructLiteral {
     polarity: bool,
 }
 
+/// Very simple implementation
 impl Literal for StructLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
         Self {
@@ -107,6 +115,7 @@ pub struct DoubleLiteral(u32);
 
 impl Literal for DoubleLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
+        // Wrapping not needed, but wanted to not have overflow checks
         Self(var.wrapping_mul(2).wrapping_add(u32::from(polarity)))
     }
 
@@ -130,6 +139,7 @@ impl Literal for DoubleLiteral {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct NegativeLiteral(i32);
 
+/// Intuitive implementation
 impl Literal for NegativeLiteral {
     fn new(var: Variable, polarity: bool) -> Self {
         #[allow(clippy::cast_possible_wrap)]

@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
+/// Defines the variable propagation methods
 pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + Clone {
     fn new(cnf: &Cnf<L, S>) -> Self;
 
@@ -35,6 +36,7 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
     fn cleanup_learnt(&mut self, learnt_idx: usize);
 }
 
+/// Watched literals implementation
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WatchedLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize = 8> {
     watches: Vec<SmallVec<[usize; N]>>,
@@ -198,6 +200,7 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
     fn find_new_watch(clause_idx: usize, cnf: &Cnf<L, S>, assignment: &A) -> Option<usize> {
         let clause = &cnf[clause_idx];
 
+        // skip 2 because they are already watched
         clause
             .iter()
             .skip(2)
@@ -211,6 +214,7 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
         let new_lit = cnf[clause_idx][new_lit_idx];
         let prev_lit = cnf[clause_idx][1];
 
+        // o(1)
         cnf[clause_idx].swap(1, new_lit_idx);
         self[new_lit].push(clause_idx);
         self[prev_lit].retain(|&mut i| i != clause_idx);

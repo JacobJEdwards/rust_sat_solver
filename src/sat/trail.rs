@@ -11,6 +11,7 @@ use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
+/// The reason for a literal being in the trail.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Copy, Hash, PartialOrd, Ord)]
 pub enum Reason {
     #[default]
@@ -19,6 +20,7 @@ pub enum Reason {
     Clause(usize),
 }
 
+/// A step of the trail
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Part<L: Literal> {
     pub(crate) lit: L,
@@ -26,12 +28,17 @@ pub struct Part<L: Literal> {
     pub(crate) reason: Reason,
 }
 
+/// The trail itself
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Trail<L: Literal, S: LiteralStorage<L>> {
     t: Vec<Part<L>>,
+    /// current point in propagation
     pub curr_idx: usize,
+    /// get dl var was assigned at
     lit_to_level: Vec<usize>,
+    /// get position in trail of var
     pub lit_to_pos: Vec<usize>,
+    /// na
     marker: PhantomData<*const S>,
     cnf_non_learnt_idx: usize,
 }
@@ -45,6 +52,7 @@ impl<L: Literal, S: LiteralStorage<L>> Index<usize> for Trail<L, S> {
 }
 
 impl<L: Literal, S: LiteralStorage<L>> IndexMut<usize> for Trail<L, S> {
+    /// Might gain 0.001% or something
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         unsafe { self.t.get_unchecked_mut(index) }
     }
@@ -118,6 +126,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
         }
     }
 
+    /// after an assignment
     pub fn push(&mut self, lit: L, decision_level: usize, reason: Reason) {
         unsafe {
             if *self.lit_to_pos.get_unchecked(lit.variable() as usize) != 0 {
@@ -132,12 +141,15 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
             reason,
         });
         let var = lit.variable() as usize;
+        
+        /// definitely in bounds
         unsafe {
             *self.lit_to_level.get_unchecked_mut(var) = decision_level;
             *self.lit_to_pos.get_unchecked_mut(var) = pos;
         }
     }
 
+    /// for restarts
     pub fn reset(&mut self) {
         self.t.clear();
         self.curr_idx = 0;
@@ -145,6 +157,9 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
         self.lit_to_pos.fill(0);
     }
 
+    /// backtracking for cdcl (non-linear)
+    /// Could also be linear just backstep one level.
+    /// however then would be important to return the last decision.
     pub fn backstep_to<A: Assignment>(&mut self, a: &mut A, level: usize) {
         let mut truncate_at = 0;
 
@@ -167,6 +182,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
     }
 
     #[must_use]
+    /// Clauses that were assigned as a result of another clause
     pub fn get_locked_clauses(&self) -> SmallVec<[usize; 16]> {
         let mut locked = SmallVec::<[usize; 16]>::new();
 
@@ -179,6 +195,7 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
         locked
     }
 
+    /// Must be called after clause database cleanup
     pub fn remap_clause_indices(&mut self, map: &FxHashMap<usize, usize>) {
         for part in &mut self.t {
             if let Reason::Clause(ref mut c_ref) = part.reason {

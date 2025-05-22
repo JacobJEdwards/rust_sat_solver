@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Defines how literals are stored within a clause
+
 use crate::sat::literal;
 use crate::sat::literal::Literal;
 use smallvec::SmallVec;

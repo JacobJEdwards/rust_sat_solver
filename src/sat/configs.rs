@@ -1,3 +1,5 @@
+/// Dangerous -> maybe dont open
+
 use crate::sat::assignment::{HashMapAssignment, VecAssignment};
 use crate::sat::clause_management::{LbdClauseManagement, NoClauseManagement};
 use crate::sat::literal::{DoubleLiteral, NegativeLiteral, PackedLiteral, StructLiteral};

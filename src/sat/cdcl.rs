@@ -1,4 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Defines the main CDCL solver
+
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
@@ -210,9 +212,7 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sat::clause::Clause;
     use crate::sat::clause_storage::LiteralStorage;
-    use crate::sat::literal::PackedLiteral;
 
     fn get_cnf<L: Literal, S: LiteralStorage<L>>() -> Cnf<L, S> {
         Cnf::new(vec![vec![-1], vec![-2], vec![-3]])

@@ -1,11 +1,11 @@
-// a parser for the DIMACS format
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+//! a parser for the DIMACS format
 
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use itertools::Itertools;
 use std::io::{self, BufRead};
-// panics docs
 
 /// Parses a DIMACS file into a CNF.
 /// # Panics

@@ -1,3 +1,5 @@
+//! An arbitrary expression type and conversion functions.
+
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 
 use crate::sat::literal::Variable;

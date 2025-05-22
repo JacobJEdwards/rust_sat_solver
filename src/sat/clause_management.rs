@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Defines clause management strategies
+
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
 use crate::sat::clause_storage::LiteralStorage;

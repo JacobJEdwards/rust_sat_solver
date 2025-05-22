@@ -1,4 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Contains details of a clause
+
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal::{Literal, PackedLiteral};
 use crate::sat::trail::Trail;

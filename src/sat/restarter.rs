@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+/// Defines restart strategies
 pub trait Restarter: Debug + Clone {
     fn new() -> Self;
 

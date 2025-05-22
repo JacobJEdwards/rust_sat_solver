@@ -35,6 +35,7 @@ pub struct Solutions {
 }
 
 impl Display for Solutions {
+    /// Formats the solution as a string.
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let assignments: Vec<String> = self
             .assignments

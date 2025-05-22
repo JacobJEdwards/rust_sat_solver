@@ -1,4 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Defines functions related to conflict analysis
+
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
@@ -9,15 +11,21 @@ use crate::sat::trail::{Reason, Trail};
 use bit_vec::BitVec;
 use smallvec::SmallVec;
 
+/// The type of a conflict
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum Conflict<T: Literal, S: LiteralStorage<T>> {
     #[default]
     Ground,
+    /// The clause is the learnt clause
     Unit(Clause<T, S>),           // (clause)
+    /// The usize is the position of the asserting lit. 
+    /// Maybe unneeded, could just put it in first place.
     Learned(usize, Clause<T, S>), // (s_idx, clause)
     Restart(Clause<T, S>),        // (clause)
 }
 
+/// Defines methods for conflict analysis
+/// A struct is used instead of free functions in order to reuse allocations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Analyser<T: Literal, S: LiteralStorage<T>, const N: usize = 12> {
     seen: BitVec,
@@ -29,6 +37,7 @@ pub struct Analyser<T: Literal, S: LiteralStorage<T>, const N: usize = 12> {
 }
 
 impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
+    /// Initialise the analysis
     pub(crate) fn new(num_vars: usize) -> Self {
         Self {
             seen: BitVec::from_elem(num_vars, false),
@@ -39,26 +48,31 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         }
     }
 
+    /// Check whether a literal has been seen
+    /// Unsafe for a tiny speed up, the idx is guarranteed
     fn is_seen(&self, idx: Variable) -> bool {
         unsafe { self.seen.get_unchecked(idx as usize) }
     }
 
+    /// Make a variable as seen
     fn set_seen(&mut self, idx: Variable) {
         unsafe {
             *self.seen.get_unchecked_mut(idx as usize) = true;
         }
     }
 
+    /// Mark a variable as not having been seen.
     fn unset_seen(&mut self, idx: Variable) {
         unsafe {
             *self.seen.get_unchecked_mut(idx as usize) = false;
         }
     }
 
+    /// Apply the resolution rule.
     fn resolve(
         &mut self,
-        c: &mut Clause<T, S>,
-        o: &Clause<T, S>,
+        c: &mut Clause<T, S>, /// conflict clause
+        o: &Clause<T, S>, /// other clause
         assignment: &impl Assignment,
         idx: Variable,
         c_idx: usize,
@@ -82,6 +96,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         }
     }
 
+    /// Choose the literal to add to the learnt clause
     fn choose_literal(
         &self,
         c: &Clause<T, S>,
@@ -103,12 +118,13 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         None
     }
 
+    /// The main conflict analysis
     pub(crate) fn analyse_conflict(
         &mut self,
         cnf: &Cnf<T, S>,
         trail: &Trail<T, S>,
         assignment: &impl Assignment,
-        cref: usize,
+        cref: usize, /// The clause index
     ) -> (Conflict<T, S>, SmallVec<[T; N]>) {
         self.count = self.count.wrapping_add(1);
 
@@ -141,6 +157,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
             self.resolve(clause, &ante, assignment, idx, c_idx, trail);
         }
 
+        // was having problems with an incorrectly formed learnt clause
         debug_assert!(clause
             .iter()
             .all(|lit| assignment.literal_value(*lit) == Some(false)));
@@ -173,6 +190,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
         }
     }
 
+    /// reset between conflicts
     pub(crate) fn reset(&mut self) {
         self.seen.clear();
         self.path_c = 0;

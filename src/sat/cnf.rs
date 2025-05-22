@@ -1,4 +1,6 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+/// Defines the CNF type
+
 
 use super::clause::Clause;
 use super::expr::{apply_laws, Expr};

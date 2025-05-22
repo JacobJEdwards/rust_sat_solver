@@ -6,6 +6,7 @@ use rustc_hash::FxHashSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+/// The shape of a preprocessor
 pub trait Preprocessor<L: Literal, S: LiteralStorage<L>> {
     fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>>;
 }
@@ -16,6 +17,8 @@ impl<L: Literal, S: LiteralStorage<L>> Debug for PreprocessorChain<L, S> {
     }
 }
 
+/// Allows for chaining of preprocessors.
+/// Seemingly no way to cleanly get around having to use Arc and dyn
 #[derive(Clone, Default)]
 pub struct PreprocessorChain<L: Literal, S: LiteralStorage<L>> {
     preprocessors: Vec<Arc<dyn Preprocessor<L, S>>>,
@@ -54,6 +57,7 @@ impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PreprocessorChain<
 pub struct PureLiteralElimination;
 
 impl PureLiteralElimination {
+    /// O(n)
     pub fn find_pures<L: Literal, S: LiteralStorage<L>>(cnf: &[Clause<L, S>]) -> FxHashSet<L> {
         let mut pures = FxHashSet::default();
         let mut impures = FxHashSet::default();
@@ -79,6 +83,7 @@ impl PureLiteralElimination {
 }
 
 impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PureLiteralElimination {
+    /// O(n), but could be more efficient
     fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let mut cnf = cnf.to_vec();
 
@@ -104,11 +109,24 @@ impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PureLiteralElimina
 pub struct SubsumptionElimination;
 
 impl SubsumptionElimination {
+    /// uses the fact the literals are sorted to do this in O(n)
     fn is_subsumed_by<L: Literal, S: LiteralStorage<L>>(
         clause: &Clause<L, S>,
         other: &Clause<L, S>,
     ) -> bool {
-        clause.iter().all(|lit| other.literals.iter().contains(lit))
+        let mut c_iter = clause.iter();
+        let mut o_iter = other.iter();
+        
+        while let Some(v1) = c_iter.next() {
+            if let Some(v2) = o_iter.next() {
+                if v1 != v2 {
+                    return false;
+                }
+            } else {
+                break;
+            }
+        }
+        true
     }
 }
 
@@ -158,6 +176,7 @@ pub struct TautologyElimination;
 impl TautologyElimination {}
 
 impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for TautologyElimination {
+    /// very simple, just filter tautologies
     fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         cnf.iter()
             .filter(|clause| !clause.is_tautology())
