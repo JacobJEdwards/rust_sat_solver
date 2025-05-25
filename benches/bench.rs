@@ -1,7 +1,5 @@
 use criterion::measurement::Measurement;
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkGroup, Criterion, /* Throughput, */
-};
+use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion, /* Throughput, */};
 use itertools::Itertools;
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
@@ -26,6 +24,7 @@ use sat_solver::sat::variable_selection::{
 };
 use smallvec::SmallVec;
 use std::fmt::Debug;
+use std::hint::black_box;
 use std::path::Path;
 use std::time::Duration;
 
@@ -182,6 +181,21 @@ fn bench_solvers(c: &mut Criterion) {
     let cnfs = load_cnfs("data/flat30-60");
 
     {
+        let mut group = c.benchmark_group("graph_colouring - Assignment type");
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(20));
+
+        run_solver_benchmark::<_, Cdcl<AssignmentConfig<VecAssignment>>, _>(
+            &mut group, "Vec", &cnfs,
+        );
+        run_solver_benchmark::<_, Cdcl<AssignmentConfig<HashMapAssignment>>, _>(
+            &mut group, "Hashmap", &cnfs,
+        );
+
+        group.finish();
+    }
+
+    {
         let mut group = c.benchmark_group("graph_colouring - Variable selection");
         group.sample_size(100);
         group.measurement_time(Duration::from_secs(20));
@@ -282,21 +296,6 @@ fn bench_solvers(c: &mut Criterion) {
             &cnfs,
         );
         run_solver_benchmark::<_, Cdcl<RestarterConfig<Never>>, _>(&mut group, "Never", &cnfs);
-
-        group.finish();
-    }
-
-    {
-        let mut group = c.benchmark_group("graph_colouring - Assignment type");
-        group.sample_size(100);
-        group.measurement_time(Duration::from_secs(20));
-
-        run_solver_benchmark::<_, Cdcl<AssignmentConfig<VecAssignment>>, _>(
-            &mut group, "Vec", &cnfs,
-        );
-        run_solver_benchmark::<_, Cdcl<AssignmentConfig<HashMapAssignment>>, _>(
-            &mut group, "Hashmap", &cnfs,
-        );
 
         group.finish();
     }

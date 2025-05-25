@@ -1,5 +1,17 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-/// Defines clause management strategies
+//! This module defines strategies for managing the clause database in a SAT solver.
+//!
+//! Clause management is crucial for the performance of modern SAT solvers, especially
+//! Conflict-Driven Clause Learning (CDCL) solvers. As solvers learn new clauses
+//! during conflict analysis, the clause database can grow very large. Effective
+//! management strategies aim to:
+//! - Periodically remove less useful learnt clauses to keep the database size manageable.
+//! - Prioritize keeping "high-quality" clauses (e.g., those with low LBD or high activity).
+//! - Decay clause activities to reflect their recent involvement in conflicts.
+//!
+//! This module provides a `ClauseManagement` trait that abstracts these strategies,
+//! along with concrete implementations like `LbdClauseManagement` (which uses
+//! Literal Blocks Distance and activity scores) and `NoClauseManagement` (a no-op strategy).
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
@@ -11,10 +23,59 @@ use crate::sat::trail::Trail;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::Debug;
 
+/// A constant factor used to decay clause activities.
+const DECAY_FACTOR: f64 = 0.95;
+
+/// Trait defining the interface for clause database management strategies.
+///
+/// Implementors of this trait control when and how the clause database (specifically
+/// learnt clauses) is pruned or maintained.
+///
+/// # Type Parameters
+///
+/// * `L`: The type of `Literal` used in clauses.
+/// * `S`: The `LiteralStorage` type used within clauses.
 pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + Default {
+    /// Creates a new instance of the clause management strategy.
+    ///
+    /// # Arguments
+    ///
+    /// * `clauses`: An initial slice of clauses. This might be used to initialize
+    ///   internal structures, though many strategies might not need it
+    ///   if they primarily operate on learnt clauses added later.
     fn new(clauses: &[Clause<L, S>]) -> Self;
+
+    /// Called by the solver after a conflict occurs and a new clause might have been learnt.
+    ///
+    /// This method allows the strategy to update its internal state, such as
+    /// incrementing conflict counters or decaying clause activities.
+    ///
+    /// # Arguments
+    ///
+    /// * `cnf`: A mutable reference to the `Cnf` formula, allowing modification of clause activities.
     fn on_conflict(&mut self, cnf: &mut Cnf<L, S>);
+
+    /// Determines whether the clause database should be cleaned.
+    ///
+    /// This is typically based on a conflict counter reaching a certain interval.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the database cleaning process should be triggered, `false` otherwise.
     fn should_clean_db(&self) -> bool;
+
+    /// Performs the clause database cleaning operation.
+    ///
+    /// This method identifies and removes learnt clauses deemed less useful.
+    /// It needs to coordinate with other solver components like the `Trail` (to handle
+    /// reasons for assignments) and the `Propagator` (to update watched literals).
+    ///
+    /// # Arguments
+    ///
+    /// * `cnf`: A mutable reference to the `Cnf` formula, from which clauses will be removed.
+    /// * `trail`: A mutable reference to the `Trail`, to update clause indices used as reasons.
+    /// * `propagator`: A mutable reference to the `Propagator`, to update its internal clause references.
+    /// * `assignment`: A mutable reference to the `Assignment` (currently unused by `LbdClauseManagement`).
     fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         cnf: &mut Cnf<L, S>,
@@ -22,37 +83,73 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
         propagator: &mut P,
         assignment: &mut A,
     );
+
+    /// Bumps the activity of clauses involved in deriving a new learnt clause.
+    ///
+    /// Typically, the learnt clause itself and potentially clauses used in its resolution
+    /// have their activity increased.
+    ///
+    /// # Arguments
+    ///
+    /// * `cnf`: A mutable reference to the `Cnf` formula, to access and modify the clause.
+    /// * `c_ref`: The index of the clause whose activity should be bumped (often the newly learnt clause).
     fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize);
+
+    /// Returns the total number of clauses removed by this management strategy so far.
     fn num_removed(&self) -> usize;
 }
 
+/// A clause management strategy based on Literal Blocks Distance (LBD) and activity.
+///
+/// This strategy periodically cleans the learnt clause database by:
+/// 1. Identifying candidate learnt clauses for removal (those not locked by the trail).
+/// 2. Sorting candidates: clauses with LBD <= 2 are prioritized to be kept.
+///    Among others, clauses with lower LBD are preferred, and then lower activity (as less active clauses are removed).
+/// 3. Removing roughly half of the worst-ranking candidates.
+/// 4. Clause activities are decayed after each conflict.
+///
+/// # Type Parameters
+///
+/// * `L`: The type of `Literal`.
+/// * `S`: The `LiteralStorage` type.
+/// * `N`: A compile-time constant defining the conflict interval at which database cleaning is considered.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LbdClauseManagement<L: Literal, S: LiteralStorage<L>, const N: usize> {
+    /// The interval (number of conflicts) between database cleaning attempts.
     interval: usize,
+    /// Counter for conflicts since the last database cleanup.
     conflicts_since_last_cleanup: usize,
+    /// Total number of clauses removed by this strategy.
     num_removed: usize,
 
+    /// Buffer for storing candidates for removal: (`original_index`, lbd, activity).
     candidates: Vec<(usize, u32, f64)>,
+    /// Set of original indices of clauses selected for removal.
     indices_to_remove: FxHashSet<usize>,
+    /// Buffer for storing learnt clauses that are kept after cleaning.
     new_learnt_clauses: Vec<Clause<L, S>>,
+    /// Map from old clause indices to new clause indices after compaction.
     old_to_new_idx_map: FxHashMap<usize, usize>,
 }
 
 impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     for LbdClauseManagement<L, S, N>
 {
+    /// Creates a new `LbdClauseManagement` instance.
+    ///
+    /// Initializes internal buffers and sets the cleaning interval based on `N`.
+    /// The initial `clauses` slice is used to estimate initial capacities but not directly stored.
     fn new(clauses: &[Clause<L, S>]) -> Self {
-        let mut candidates = Vec::with_capacity(clauses.len());
-        candidates.reserve(clauses.len());
+        let initial_capacity = clauses.len();
+        let candidates = Vec::with_capacity(initial_capacity);
 
         let mut indices_to_remove = FxHashSet::default();
-        indices_to_remove.reserve(clauses.len());
+        indices_to_remove.reserve(initial_capacity);
 
-        let mut new_learnt_clauses = Vec::with_capacity(clauses.len());
-        new_learnt_clauses.reserve(clauses.len());
+        let new_learnt_clauses = Vec::with_capacity(initial_capacity);
 
         let mut old_to_new_idx_map = FxHashMap::default();
-        old_to_new_idx_map.reserve(clauses.len());
+        old_to_new_idx_map.reserve(initial_capacity);
 
         Self {
             interval: N,
@@ -65,21 +162,36 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         }
     }
 
+    /// Increments the conflict counter and decays activities of all learnt clauses.
     fn on_conflict(&mut self, cnf: &mut Cnf<L, S>) {
         self.conflicts_since_last_cleanup = self.conflicts_since_last_cleanup.wrapping_add(1);
-        self.decay_clause_activities(cnf);
+        Self::decay_clause_activities(cnf);
     }
 
+    /// Returns `true` if `conflicts_since_last_cleanup` has reached the `interval`.
     fn should_clean_db(&self) -> bool {
         self.conflicts_since_last_cleanup >= self.interval
     }
 
+    /// Cleans the learnt clause database.
+    ///
+    /// - Selects learnt clauses not locked by the trail as removal candidates.
+    /// - Sorts candidates:
+    ///   - Clauses with LBD <= 2 are strongly preferred (kept).
+    ///   - Otherwise, lower LBD is better (kept).
+    ///   - For equal LBD, lower activity is worse (removed).
+    /// - Removes approximately half of the "worst" candidates.
+    /// - Rebuilds the learnt part of the `Cnf`'s clause list.
+    /// - Updates `Trail` and `Propagator` with remapped clause indices.
+    /// - Resets the conflict counter.
+    ///
+    /// The `assignment` parameter is currently unused by this implementation.
     fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         cnf: &mut Cnf<L, S>,
         trail: &mut Trail<L, S>,
         propagator: &mut P,
-        _: &mut A,
+        _assignment: &mut A,
     ) {
         let learnt_start_idx = cnf.non_learnt_idx;
         if cnf.len() <= learnt_start_idx {
@@ -87,7 +199,6 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         }
 
         self.candidates.clear();
-
         let locked_clauses = trail.get_locked_clauses();
 
         for idx in learnt_start_idx..cnf.len() {
@@ -97,13 +208,11 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
             }
         }
 
-        let candidates = &mut self.candidates;
-
-        if candidates.is_empty() {
+        if self.candidates.is_empty() {
             return;
         }
 
-        let num_candidates = candidates.len();
+        let num_candidates = self.candidates.len();
         let num_to_remove = num_candidates / 2;
 
         if num_to_remove == 0 {
@@ -114,47 +223,49 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
             let (_, lbd_a, act_a) = a;
             let (_, lbd_b, act_b) = b;
 
-            let keep_a = *lbd_a <= 2;
-            let keep_b = *lbd_b <= 2;
+            let keep_a_heuristic = *lbd_a <= 2;
+            let keep_b_heuristic = *lbd_b <= 2;
 
-            if keep_a && !keep_b {
+            if keep_a_heuristic && !keep_b_heuristic {
                 return std::cmp::Ordering::Greater;
             }
-            if !keep_a && keep_b {
+            if !keep_a_heuristic && keep_b_heuristic {
                 return std::cmp::Ordering::Less;
             }
 
-            match lbd_b.cmp(lbd_a) {
+            match lbd_a.cmp(lbd_b) {
+                // lower LBD is better
                 std::cmp::Ordering::Equal => act_a
                     .partial_cmp(act_b)
                     .unwrap_or(std::cmp::Ordering::Equal),
-                other => other,
+                other_lbd_cmp => other_lbd_cmp.reverse(),
             }
         };
 
-        candidates.select_nth_unstable_by(num_to_remove, comparison);
+        self.candidates
+            .select_nth_unstable_by(num_to_remove, comparison);
 
         self.indices_to_remove.clear();
-        for (idx, _, _) in &candidates[..num_to_remove] {
+        for (idx, _, _) in self.candidates.iter().take(num_to_remove) {
             self.indices_to_remove.insert(*idx);
         }
-
-        let indices_to_remove = &self.indices_to_remove;
 
         self.new_learnt_clauses.clear();
         self.old_to_new_idx_map.clear();
 
         let mut current_new_idx = learnt_start_idx;
         for old_idx in learnt_start_idx..cnf.len() {
-            if !indices_to_remove.contains(&old_idx) {
+            if !self.indices_to_remove.contains(&old_idx) {
                 self.new_learnt_clauses.push(cnf[old_idx].clone());
                 self.old_to_new_idx_map.insert(old_idx, current_new_idx);
                 current_new_idx = current_new_idx.wrapping_add(1);
             }
         }
 
-        let new_total_len = learnt_start_idx.wrapping_add(self.new_learnt_clauses.len());
+        let new_learnt_count = self.new_learnt_clauses.len();
+        let new_total_len = learnt_start_idx.wrapping_add(new_learnt_count);
 
+        // update CNF by replacing old learnt clauses with the filtered list
         cnf.clauses.truncate(learnt_start_idx);
         cnf.clauses.append(&mut self.new_learnt_clauses);
 
@@ -162,6 +273,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
 
         propagator.cleanup_learnt(learnt_start_idx);
         for new_idx in learnt_start_idx..new_total_len {
+            // add watches for kept learnt clauses
             propagator.add_clause(&cnf[new_idx], new_idx);
         }
 
@@ -169,42 +281,66 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
         self.num_removed = self.num_removed.wrapping_add(num_to_remove);
     }
 
+    /// Bumps the activity of the specified clause.
+    ///
+    /// In this strategy, only the referenced clause itself has its activity bumped by a fixed amount (1.0).
     fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize) {
         let clause = &mut cnf[c_ref];
         clause.bump_activity(1.0);
     }
 
+    /// Returns the total number of clauses removed so far.
     fn num_removed(&self) -> usize {
         self.num_removed
     }
 }
 
 impl<L: Literal, S: LiteralStorage<L>, const N: usize> LbdClauseManagement<L, S, N> {
-    fn decay_clause_activities(&mut self, cnf: &mut Cnf<L, S>) {
+    /// Decays the activity of all learnt clauses by a fixed factor.
+    /// This is typically called after each conflict.
+    fn decay_clause_activities(cnf: &mut Cnf<L, S>) {
         for clause in &mut cnf.clauses[cnf.non_learnt_idx..] {
-            clause.decay_activity(0.95);
+            clause.decay_activity(DECAY_FACTOR);
         }
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+/// A clause management strategy that performs no operations.
+///
+/// This strategy does not clean the clause database, bump activities, or decay them.
+/// It can be used for baseline comparisons or in scenarios where clause learning/deletion
+/// is not desired or handled differently.
+///
+/// # Type Parameters
+///
+/// * `L`: The type of `Literal`.
+/// * `S`: The `LiteralStorage` type.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NoClauseManagement<L: Literal, S: LiteralStorage<L>> {
+    /// Phantom data to use the generic type parameters `L` and `S`.
     _phantom: std::marker::PhantomData<(L, S)>,
 }
 
 impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManagement<L, S> {
+    /// Creates a new `NoClauseManagement` instance.
+    /// The `clauses` argument is ignored.
     fn new(_clauses: &[Clause<L, S>]) -> Self {
         Self {
             _phantom: std::marker::PhantomData,
         }
     }
 
-    fn on_conflict(&mut self, _cnf: &mut Cnf<L, S>) {}
+    /// This is a no-op for `NoClauseManagement`.
+    fn on_conflict(&mut self, _cnf: &mut Cnf<L, S>) {
+        // No action needed
+    }
 
+    /// Always returns `false` as this strategy never cleans the database.
     fn should_clean_db(&self) -> bool {
         false
     }
 
+    /// This is a no-op for `NoClauseManagement`.
     fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         _cnf: &mut Cnf<L, S>,
@@ -212,10 +348,15 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
         _propagator: &mut P,
         _assignment: &mut A,
     ) {
+        // no action needed
     }
 
-    fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {}
+    /// This is a no-op for `NoClauseManagement`.
+    fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {
+        // no action needed
+    }
 
+    /// Always returns `0` as no clauses are ever removed.
     fn num_removed(&self) -> usize {
         0
     }

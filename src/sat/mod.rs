@@ -1,11 +1,11 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 pub mod assignment;
 pub mod cdcl;
+
 pub mod clause;
 pub mod clause_management;
 pub mod clause_storage;
 pub mod cnf;
-mod configs;
 pub mod conflict_analysis;
 pub mod dimacs;
 pub mod dpll;
