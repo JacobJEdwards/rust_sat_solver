@@ -1,12 +1,8 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimization
-// with preconditions managed by the logic.
-// Allowing specific casts that are understood within the context of SAT solver logic.
-#![allow(unsafe_code, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 //! Contains details of a clause, a fundamental component in SAT solvers.
 //!
-//! A clause is a disjunction of literals (e.g., `x1 OR !x2 OR x3`).
+//! A clause is a disjunction of literals (e.g. `x1 OR !x2 OR x3`).
 //! This module defines the `Clause` struct, which stores literals and associated metadata
 //! relevant for Conflict-Driven Clause Learning (CDCL) SAT solvers, such as
 //! Literal Blocks Distance (LBD) and activity scores for clause deletion strategies.
@@ -33,30 +29,26 @@ use std::marker::PhantomData;
 /// * `L`: The type of literal stored in the clause. Defaults to `PackedLiteral`.
 ///   Must implement the `Literal` trait.
 /// * `S`: The storage type for the literals. Defaults to `SmallVec<[L; 8]>`.
-///   Must implement the `LiteralStorage<L>` trait, providing efficient storage for literals.
+///   Must implement the `LiteralStorage<L>` trait, providing storage for literals.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Clause<L: Literal = PackedLiteral, S: LiteralStorage<L> = SmallVec<[L; 8]>> {
     /// The collection of literals forming the clause.
-    /// The specific storage (e.g., `Vec`, `SmallVec`) is determined by the `S` type parameter.
+    /// The specific storage (e.g. `Vec`, `SmallVec`) is determined by the `S` type parameter.
     pub literals: S,
     /// Literal Blocks Distance (LBD) of the clause.
     /// LBD is a measure of the "locality" of a learnt clause in terms of decision levels.
     /// Lower LBD often indicates higher quality learnt clauses. Calculated for learnt clauses.
     pub lbd: u32,
     /// Flag indicating if the clause has been marked for deletion.
-    /// Deleted clauses are typically removed by the solver during database cleaning.
+    /// Deleted clauses are removed by the solver during database cleaning.
     pub deleted: bool,
     /// Flag indicating if the clause was learnt during conflict analysis.
     /// Original clauses (from the input problem) are not marked as learnt.
     pub is_learnt: bool,
-    /// Activity score of the clause, used in clause deletion heuristics (e.g., VSIDS-like).
+    /// Activity score of the clause, used in clause deletion heuristics (e.g. VSIDS-like).
     /// Higher activity suggests the clause has been more recently involved in conflicts or propagations.
     pub activity: OrderedFloat<f64>,
     /// `PhantomData` to ensure proper variance and handling of the generic type `L`.
-    /// `*const L` suggests covariance over `L`, meaning `Clause<LSub, S>` could be
-    /// treated as `Clause<LSuper, S>` if `LSub` is a subtype of `LSuper`, though this
-    /// concept is less direct in Rust without trait object subtyping.
-    /// It mainly helps the compiler with type checking for `L`.
     data: PhantomData<*const L>,
 }
 
@@ -72,7 +64,7 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
     /// Creates a new clause from an iterator of literals.
     ///
     /// The literals from the iterator are collected into the `literals` field.
-    /// Other fields (`lbd`, `deleted`, `is_learnt`, `activity`) are initialized to default values.
+    /// Other fields (`lbd`, `deleted`, `is_learnt`, `activity`) are initialised to default values.
     fn from_iter<I: IntoIterator<Item = L>>(iter: I) -> Self {
         Self {
             literals: iter.into_iter().unique().collect(),
@@ -90,8 +82,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     ///
     /// Literals are deduplicated during creation using `itertools::Itertools::unique`.
     /// For example, `[L1, L1, L2]` becomes `{L1, L2}`.
-    /// The clause is initialized as not learnt, not deleted, with LBD 0 and activity 0.0.
-    /// This method does not check for tautologies automatically upon creation.
+    /// The clause is initialised as not learnt, not deleted, with LBD 0 and activity 0.0.
     ///
     /// # Arguments
     ///
@@ -112,7 +103,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     ///   In this case, a clone of `self` is returned.
     /// - The resolvent clause is formed by taking the union of literals from `self` (excluding `pivot`)
     ///   and `other` (excluding `pivot.negated()`), with duplicates removed.
-    /// - If the resulting resolvent is a tautology (e.g., contains both `y` and `!y`),
+    /// - If the resulting resolvent is a tautology (e.g. contains both `y` and `!y`),
     ///   a default (typically empty and non-learnt) clause is returned. A tautological resolvent
     ///   is logically true and provides no new constraints.
     ///
@@ -241,8 +232,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Checks if the clause is a tautology.
     ///
     /// A clause is a tautology if it contains both a literal and its negation
-    /// (e.g., `x OR !x`). Such clauses are always true and typically not useful
-    /// in logical reasoning or SAT solving.
+    /// (e.g. `x OR !x`). Such clauses are always true and not useful
     ///
     /// # Returns
     ///
@@ -279,10 +269,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
 
     /// Swaps two literals in the clause by their indices.
     ///
-    /// This operation is often used in SAT solvers that employ watch lists,
-    /// where watched literals are moved to specific positions (e.g., the first two)
-    /// in the clause for efficient propagation.
-    ///
     /// # Arguments
     ///
     /// * `i`: The index of the first literal.
@@ -298,8 +284,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Checks if the clause is a unit clause.
     ///
     /// A unit clause is a clause with exactly one literal.
-    /// Under a partial assignment, a clause can become unit if all but one of its literals
-    /// are assigned false. Unit clauses are crucial for unit propagation in SAT solvers.
     ///
     /// # Returns
     ///
@@ -312,7 +296,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Checks if the clause is empty.
     ///
     /// An empty clause (containing no literals) represents a contradiction (logical false).
-    /// If an empty clause is derived during SAT solving, the formula is unsatisfiable.
     ///
     /// # Returns
     ///
@@ -331,8 +314,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Marks the clause as deleted.
     ///
     /// This only sets the `deleted` flag to `true`. It does not remove the clause
-    /// from any external storage (like a clause database). The actual removal is typically
-    /// handled by a separate garbage collection or clause database cleaning process.
     pub const fn delete(&mut self) {
         self.deleted = true;
     }
@@ -357,9 +338,8 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Calculates and updates the Literal Block Distance (LBD) of the clause.
     ///
     /// LBD is defined as the number of distinct decision levels (excluding level 0)
-    /// of the variables in the clause's literals. This metric is used in CDCL solvers
-    /// to estimate the "quality" or "usefulness" of learnt clauses, often guiding
-    /// clause deletion strategies (clauses with lower LBD are generally preferred).
+    /// of the variables in the clause's literals. This metric is used
+    /// to estimate the "quality" or "usefulness" of learnt clauses
     ///
     /// Special LBD rules applied:
     /// - If the clause is empty, LBD is 0.
@@ -374,7 +354,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     ///
     /// # Panics
     /// Behavior of `BitVec` indexing with `level` (a `u32`) depends on `usize` size.
-    /// `clippy::cast_possible_truncation` lint is allowed for this module.
     pub fn calculate_lbd(&mut self, trail: &Trail<L, S>) {
         if self.is_empty() {
             self.lbd = 0;
@@ -421,8 +400,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
 
     /// Converts this clause into a clause with different literal or storage types.
     ///
-    /// This is useful for interoperability if different parts of a solver
-    /// use different representations (e.g., for specialized literal types or storage).
+    /// This is useful for benchmarking primarily
     /// The literals are converted one by one using `T::new(original_lit.variable(), original_lit.polarity())`.
     /// Metadata like LBD, deleted status, learnt status, and activity are copied.
     ///
@@ -464,9 +442,6 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
 
     /// Decays the activity score of the clause by a multiplicative factor.
     ///
-    /// In VSIDS-like heuristics, all clause activities are periodically decayed.
-    /// This gradually reduces the importance of clauses that have not been active recently.
-    ///
     /// # Arguments
     ///
     /// * `factor`: The factor to multiply the activity score by (typically between 0 and 1).
@@ -492,11 +467,10 @@ impl<T: Literal, S: LiteralStorage<T>> Index<usize> for Clause<T, S> {
     ///
     /// # Safety
     ///
-    /// This implementation uses `get_unchecked` for performance, based on the assumption
-    /// that accesses are correctly bounded by the caller or internal logic (e.g., after a length check).
-    /// Direct, unchecked indexing can lead to undefined behavior if `index` is invalid.
+    /// This implementation uses `get_unchecked` for performance
     fn index(&self, index: usize) -> &Self::Output {
         // Safety: Caller must ensure `index` is within bounds `[0, self.literals.len())`.
+        // This is fine is used within the correct context.
         unsafe { self.literals.get_unchecked(index) }
     }
 }
@@ -511,9 +485,9 @@ impl<T: Literal, S: LiteralStorage<T>> IndexMut<usize> for Clause<T, S> {
     /// # Safety
     ///
     /// This implementation uses `get_unchecked_mut` for performance.
-    /// See `Index` implementation for safety notes regarding `get_unchecked`.
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         // Safety: Caller must ensure `index` is within bounds `[0, self.literals.len())`.
+        // This is fine is used within the correct context.
         unsafe { self.literals.get_unchecked_mut(index) }
     }
 }
@@ -522,7 +496,6 @@ impl<T: Literal, S: LiteralStorage<T>> From<&Clause<T, S>> for Vec<T> {
     /// Converts a reference to a clause into a `Vec` of its literals.
     ///
     /// The literals are copied from the clause's internal storage into a new `Vec<T>`.
-    /// `T` must be `Copy`.
     fn from(clause: &Clause<T, S>) -> Self {
         clause.literals.iter().copied().collect_vec()
     }
@@ -530,16 +503,10 @@ impl<T: Literal, S: LiteralStorage<T>> From<&Clause<T, S>> for Vec<T> {
 
 impl<T: Literal + Eq + Hash, S: LiteralStorage<T>> From<Vec<i32>> for Clause<T, S> {
     /// Creates a clause from a `Vec<i32>`, where integers represent literals
-    /// in DIMACS format (e.g., `1` for variable 1 true, `-2` for variable 2 false).
-    ///
-    /// Variables are assumed to be 1-indexed in the input `Vec<i32>`. The absolute value
-    /// of `i32` is taken as the variable identifier (typically `u32`), and its sign determines
-    /// the polarity. `T::new(variable_id, polarity)` is used to create each literal.
-    /// The `T::Variable` type associated with the `Literal` trait `T` should be compatible
-    /// with `u32` or constructible from it.
+    /// in DIMACS format (e.g. `1` for variable 1 true, `-2` for variable 2 false).
     ///
     /// This constructor uses `Clause::new`, so literals will be deduplicated.
-    /// Other fields (`lbd`, `deleted`, etc.) are initialized to defaults.
+    /// Other fields (`lbd`, `deleted`, etc.) are initialised to defaults.
     fn from(literals_dimacs: Vec<i32>) -> Self {
         let literals_t = literals_dimacs
             .iter()
@@ -557,14 +524,9 @@ impl<T: Literal + Eq + Hash, S: LiteralStorage<T>> From<Vec<i32>> for Clause<T, 
 impl<L: Literal, S: LiteralStorage<L>> From<Vec<L>> for Clause<L, S> {
     /// Creates a clause directly from a `Vec<L>`.
     ///
-    /// The provided `Vec<L>` is used to initialize the `literals` field, typically via
-    /// `S::from(Vec<L>)` if `S` implements such a conversion (e.g., `SmallVec`).
-    /// Note: This does not automatically deduplicate literals from `literals_vec`.
-    /// If deduplication is required, consider using `Clause::new(&literals_vec)`.
-    /// Other fields (`lbd`, `deleted`, etc.) are initialized to defaults.
     fn from(literals_vec: Vec<L>) -> Self {
         Self {
-            literals: S::from(literals_vec), // Relies on S: From<Vec<L>>
+            literals: S::from(literals_vec),
             lbd: 0,
             deleted: false,
             is_learnt: false,
@@ -578,12 +540,9 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
     /// Creates a clause from a reference to a `Vec<L>`, cloning the literals.
     ///
     /// The literals from `literals_vec` are cloned to create the `literals` field.
-    /// Note: This does not automatically deduplicate literals.
-    /// If deduplication is required, consider using `Clause::new(literals_vec.as_slice())`.
-    /// Other fields (`lbd`, `deleted`, etc.) are initialized to defaults.
     fn from(literals_vec: &Vec<L>) -> Self {
         Self {
-            literals: S::from(literals_vec.clone()),
+            literals: S::from(literals_vec.iter().unique().copied().collect_vec()),
             lbd: 0,
             deleted: false,
             is_learnt: false,
@@ -596,9 +555,7 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
 impl<L: Literal + Eq + Hash, S: LiteralStorage<L>> FromIterator<i32> for Clause<L, S> {
     /// Creates a clause from an iterator of `i32` (DIMACS literals).
     ///
-    /// This is similar to `From<Vec<i32>>`. Literals are converted from DIMACS format,
-    /// collected into a temporary `Vec<L>`, and then `Clause::new` is used, which
-    /// ensures deduplication.
+    /// This is similar to `From<Vec<i32>>`. Literals are converted from DIMACS format.
     /// See `From<Vec<i32>>` for more details on DIMACS conversion and variable indexing.
     fn from_iter<I: IntoIterator<Item = i32>>(iter: I) -> Self {
         let literals_t: Vec<L> = iter

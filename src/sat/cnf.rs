@@ -7,12 +7,12 @@
 //!
 //! This module provides:
 //! - The `Cnf` struct to store a list of clauses and related metadata.
-//! - Methods for constructing `Cnf` from various sources (e.g., iterators of DIMACS literals, `Expr`).
+//! - Methods for constructing `Cnf` from various sources (e.g. iterators of DIMACS literals, `Expr`).
 //! - Utilities for interacting with the `Cnf` formula, such as adding clauses, iterating,
 //!   and verifying solutions.
 //! - Conversion functions to and from a more general `Expr` (expression tree) representation.
 //!
-// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimization
+// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimisation
 // with preconditions managed by the logic.
 // Allowing specific casts that are understood within the context of SAT solver logic.
 #![allow(unsafe_code, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -46,17 +46,13 @@ pub struct Cnf<L: Literal = PackedLiteral, S: LiteralStorage<L> = SmallVec<[L; 8
     /// The list of clauses that make up the CNF formula.
     pub clauses: Vec<Clause<L, S>>,
     /// The highest variable identifier encountered in the formula, plus one.
-    /// This often represents the number of distinct variables if they are numbered contiguously from 0 or 1.
+    /// This represents the number of distinct variables if they are numbered contiguously from 0 or 1.
     /// If variables are 1-indexed `v1, ..., vn`, `num_vars` would be `n+1`.
     /// If variables are 0-indexed `v0, ..., v(n-1)`, `num_vars` would be `n`.
-    /// The implementation of `new` suggests `num_vars` is `max_var_id + 1`.
     pub num_vars: usize,
     /// A flat list of all variable identifiers present in the formula. May contain duplicates.
-    /// This field might be for diagnostics or specific algorithms; `num_vars` is more canonical
-    /// for the count of variables.
     pub vars: Vec<Variable>,
     /// A flat list of all literals present across all clauses. May contain duplicates.
-    /// Similar to `vars`, this could be for specific processing needs.
     pub lits: Vec<L>,
     /// The index in `clauses` vector that separates original problem clauses from learnt clauses.
     /// Clauses from `0` to `non_learnt_idx - 1` are original.
@@ -76,8 +72,7 @@ impl<T: Literal, S: LiteralStorage<T>> Index<usize> for Cnf<T, S> {
     ///
     /// # Safety
     ///
-    /// This implementation uses `get_unchecked` for performance, assuming that
-    /// accesses are correctly bounded by the caller or internal logic.
+    /// This implementation uses `get_unchecked` for performance
     fn index(&self, index: usize) -> &Self::Output {
         // Safety: Caller must ensure `index` is within bounds `[0, self.clauses.len())`.
         // This should be fine if used correctly.
@@ -202,7 +197,6 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
     /// # Arguments
     ///
     /// * `clause`: The `Clause<T, S>` to add.
-    ///
     pub fn add_clause(&mut self, clause: Clause<T, S>) {
         let clause_max_var_id = clause
             .iter()
@@ -252,7 +246,7 @@ impl<T: Literal, S: LiteralStorage<T>> Cnf<T, S> {
     /// # Arguments
     ///
     /// * `solutions`: A `Solutions` object providing the truth assignment for variables.
-    ///   `Solutions` is expected to handle DIMACS-style variable IDs (1-indexed, signed).
+    ///   `Solutions` handles DIMACS-style variable IDs (1-indexed, signed).
     ///
     /// # Returns
     ///
@@ -309,9 +303,6 @@ impl<L: Literal, S: LiteralStorage<L>> Display for Cnf<L, S> {
     /// 1 -2 0
     /// 2 3 0
     /// ```
-    /// Note: `num_vars` in DIMACS is typically the highest variable ID.
-    /// The current `self.num_vars` is `max_id + 1`. So, `self.num_vars - 1` is used.
-    /// `num_clauses` here refers to the number of original (non-learnt) clauses.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let dimacs_num_vars = if self.num_vars > 0 {
             self.num_vars - 1
@@ -338,10 +329,10 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<Clause<L, S>> for Cnf<L, S> 
     /// Creates a `Cnf` from an iterator of `Clause<L, S>`.
     ///
     /// Each clause from the iterator is added using `self.add_clause`.
-    /// This initializes a default `Cnf` and then populates it.
+    /// This initialises a default `Cnf` and then populates it.
     /// `non_learnt_idx` will be implicitly managed by `add_clause` if it updates it,
     /// or will remain 0 if `add_clause` only appends to `clauses`.
-    /// A more robust way would be to collect clauses, then initialize `Cnf` fields properly.
+    /// A more robust way would be to collect clauses, then initialise `Cnf` fields properly.
     fn from_iter<IterClauses: IntoIterator<Item = Clause<L, S>>>(iter: IterClauses) -> Self {
         let mut cnf = Self::default();
         let mut max_var_id = u32::default();
@@ -366,12 +357,12 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<Clause<L, S>> for Cnf<L, S> 
 ///
 /// The conversion involves:
 /// 1. Applying logical laws (`apply_laws`) to transform the expression into a
-///    structure that is easier to convert to CNF (e.g., NNF, pushing negations inwards).
+///    structure that is easier to convert to CNF (e.g. NNF, pushing negations inwards).
 /// 2. Recursively converting the transformed expression into a list of clauses (`to_clauses`).
 /// 3. Constructing a `Cnf` object from this list of clauses.
 ///
 /// Note: This is a standard, potentially exponential, conversion for arbitrary expressions.
-/// For more efficient CNF conversion (e.g., Tseytin transformation), specialized algorithms are needed.
+/// For more efficient CNF conversion (e.g. Tseytin transformation), specialised algorithms are needed.
 #[must_use]
 pub fn to_cnf<T: Literal, S: LiteralStorage<T>>(expr: &Expr) -> Cnf<T, S> {
     let cnf_expr = apply_laws(expr);
@@ -453,7 +444,7 @@ impl<T: Literal, S: LiteralStorage<T>> From<Expr> for Cnf<T, S> {
 
 impl<L: Literal, S: LiteralStorage<L>> From<Vec<Clause<L, S>>> for Cnf<L, S> {
     /// Converts a `Vec<Clause<L, S>>` directly into a `Cnf<L, S>`.
-    /// Uses `from_iter` for consistent initialization.
+    /// Uses `from_iter` for consistent initialisation.
     fn from(clauses: Vec<Clause<L, S>>) -> Self {
         Self::from_iter(clauses)
     }
@@ -540,35 +531,35 @@ mod tests {
         assert!(dimacs_str.contains("2 3 0"), "Clause 2 mismatch");
     }
 
-    // #[test]
-    // fn test_cnf_from_expr() {
-    //     let expr = Expr::And(
-    //         Box::new(Expr::Or(
-    //             Box::new(Expr::Var(1_u32)),
-    //             Box::new(Expr::Not(Box::new(Expr::Var(2_u32)))),
-    //         )),
-    //         Box::new(Expr::Or(
-    //             Box::new(Expr::Var(2_u32)),
-    //             Box::new(Expr::Var(3_u32)),
-    //         )),
-    //     );
-    //
-    //     let cnf: Cnf<PackedLiteral> = Cnf::from(expr);
-    //     assert_eq!(cnf.clauses.len(), 2);
-    //     assert_eq!(cnf.num_vars, 3 + 1);
-    //
-    //     assert!(cnf.clauses.iter().any(|c| {
-    //         c.len() == 2
-    //             && c.iter().any(|l| l.variable() == 1_u32 && l.polarity())
-    //             && c.iter().any(|l| l.variable() == 2_u32 && !l.polarity())
-    //     }));
-    //
-    //     assert!(cnf.clauses.iter().any(|c| {
-    //         c.len() == 2
-    //             && c.iter().any(|l| l.variable() == 2_u32 && l.polarity())
-    //             && c.iter().any(|l| l.variable() == 3_u32 && l.polarity())
-    //     }));
-    // }
+    #[test]
+    fn test_cnf_from_expr() {
+        let expr = Expr::And(
+            Box::new(Expr::Or(
+                Box::new(Expr::Var(1_u32)),
+                Box::new(Expr::Not(Box::new(Expr::Var(2_u32)))),
+            )),
+            Box::new(Expr::Or(
+                Box::new(Expr::Var(2_u32)),
+                Box::new(Expr::Var(3_u32)),
+            )),
+        );
+
+        let cnf: Cnf<PackedLiteral> = Cnf::from(expr);
+        assert_eq!(cnf.clauses.len(), 2);
+        assert_eq!(cnf.num_vars, 3 + 1);
+
+        assert!(cnf.clauses.iter().any(|c| {
+            c.len() == 2
+                && c.iter().any(|l| l.variable() == 1_u32 && l.polarity())
+                && c.iter().any(|l| l.variable() == 2_u32 && !l.polarity())
+        }));
+
+        assert!(cnf.clauses.iter().any(|c| {
+            c.len() == 2
+                && c.iter().any(|l| l.variable() == 2_u32 && l.polarity())
+                && c.iter().any(|l| l.variable() == 3_u32 && l.polarity())
+        }));
+    }
 
     #[test]
     fn test_cnf_verify_solution() {

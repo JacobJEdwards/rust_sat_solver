@@ -4,9 +4,9 @@
 //! Preprocessing techniques aim to simplify a CNF formula before handing it
 //! to the main SAT solver. This can significantly reduce the search space and
 //! improve solver performance. Common techniques include:
-//! - Eliminating tautological clauses (e.g., `x V !x V y`).
+//! - Eliminating tautological clauses (e.g. `x V !x V y`).
 //! - Eliminating pure literals (literals that only appear with one polarity).
-//! - Eliminating subsumed clauses (e.g., if `(x V y)` exists, `(x V y V z)` is subsumed).
+//! - Eliminating subsumed clauses (e.g. if `(x V y)` exists, `(x V y V z)` is subsumed).
 //!
 //! This module provides:
 //! - The `Preprocessor` trait, defining a common interface for preprocessing steps.
@@ -73,6 +73,7 @@ impl<L: Literal, S: LiteralStorage<L>> Debug for PreprocessorChain<L, S> {
 impl<L: Literal, S: LiteralStorage<L>> PreprocessorChain<L, S> {
     /// Creates a new, empty `PreprocessorChain`.
     #[must_use]
+    #[allow(dead_code)]
     pub const fn new() -> Self {
         Self {
             preprocessors: Vec::new(),
@@ -93,6 +94,7 @@ impl<L: Literal, S: LiteralStorage<L>> PreprocessorChain<L, S> {
     ///
     /// A new `PreprocessorChain` with the added preprocessor.
     #[must_use]
+    #[allow(dead_code)]
     pub fn add_preprocessor<P: Preprocessor<L, S> + 'static>(mut self, preprocessor: P) -> Self {
         let arc_preprocessor = Arc::new(preprocessor);
         self.preprocessors.push(arc_preprocessor);
@@ -126,7 +128,7 @@ impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for PreprocessorChain<
 /// Preprocessor for Pure Literal Elimination.
 ///
 /// A pure literal is a literal that appears in the formula with only one polarity
-/// (e.g., `x` appears but `!x` does not, or vice-versa).
+/// (e.g. `x` appears but `!x` does not, or vice versa).
 /// If a literal `l` is pure:
 /// - All clauses containing `l` can be satisfied by setting `l` to true. These clauses can be removed.
 /// - Literals that are pure do not need to be part of the simplified formula sent to the solver,
@@ -265,7 +267,7 @@ where
     ///
     /// Iterates through pairs of clauses. If clause `C_i` subsumes `C_j`, `C_j` is marked for removal.
     /// To optimise, clauses are typically sorted by length first: a shorter clause can subsume
-    /// a longer one, but not vice versa (unless they are identical, handled by duplicate removal typically).
+    /// a longer one, but not vice versa.
     fn preprocess(&self, cnf: &[Clause<L, S>]) -> Vec<Clause<L, S>> {
         let result = cnf.to_vec();
         if result.len() < 2 {

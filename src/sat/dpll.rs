@@ -1,4 +1,4 @@
-//! Defines the main DPLL (Davis-Putnam-Logemann-Loveland) SAT solver.
+//! Defines the DPLL (Davis-Putnam-Logemann-Loveland) SAT solver.
 //!
 //! This module provides the `Dpll` struct, which implements a classical DPLL
 //! algorithm for solving Boolean Satisfiability (SAT) problems. The solver
@@ -7,7 +7,7 @@
 //! (an assignment of truth values to variables that satisfies the formula).
 //!
 //! The `Dpll` solver is generic over a `SolverConfig` trait, allowing
-//! different underlying data structures and strategies (e.g., for variable
+//! different underlying data structures and strategies (e.g. for variable
 //! selection, literal representation) to be plugged in. A `DefaultConfig`
 //! is provided for common use cases.
 //!
@@ -20,6 +20,8 @@
 //!     and the algorithm recursively tries assigning it true and then false.
 //! 3.  **Backtracking:** Implicitly handled by the recursive calls and cloning. If a branch
 //!     leads to a conflict (a clause becomes unsatisfiable), that branch is abandoned.
+//!
+//! Was a near direct translation of the original Haskell implementation
 
 use crate::sat::assignment::Assignment;
 use crate::sat::cnf;
@@ -65,7 +67,7 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
     ///
     /// # Returns
     ///
-    /// A new `Dpll` instance initialized with the provided formula and
+    /// A new `Dpll` instance initialised with the provided formula and
     /// default components (propagator, assignment tracker, trail, variable selector)
     /// based on the `Config`.
     fn new(cnf: Cnf<Config::Literal, Config::LiteralStorage>) -> Self {
@@ -157,17 +159,12 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
     /// `conflicts`, `restarts`, `learnt_clauses`, `removed_clauses` are currently placeholders.
     fn stats(&self) -> SolutionStats {
         SolutionStats {
-            conflicts: 0, // Placeholder, not actively counted in this basic DPLL
+            conflicts: 0,
             decisions: self.decision_level,
-            // This is a rough heuristic: total variables minus decisions made.
-            // It doesn't count individual propagation steps accurately.
-            propagations: self
-                .cnf
-                .num_vars
-                .saturating_sub(self.decision_level as usize),
-            restarts: 0,        // Placeholder
-            learnt_clauses: 0,  // Placeholder
-            removed_clauses: 0, // Placeholder
+            propagations: self.cnf.num_vars.saturating_sub(self.decision_level),
+            restarts: 0,
+            learnt_clauses: 0,
+            removed_clauses: 0,
         }
     }
 

@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 //! Defines literals, the fundamental building blocks of clauses in SAT formulas.
 //!
-//! A literal is either a propositional variable (e.g., `x`) or its negation (e.g., `!x`).
+//! A literal is either a propositional variable (e.g. `x`) or its negation (e.g. `!x`).
 //! This module provides:
 //! - A `Variable` type alias (typically `u32`) for identifying propositional variables.
 //! - The `Literal` trait, which defines the common interface for literal representations.
@@ -16,7 +16,7 @@
 //!   - `DoubleLiteral`: Represents a literal `L` as `2*variable_index(L) + polarity_bit(L)`.
 //!     This is a common encoding for mapping literals to unique `usize` indices.
 //!   - `NegativeLiteral`: Represents literals using signed integers, similar to the DIMACS format
-//!     (e.g., `x` as `variable_id`, `!x` as `-variable_id`).
+//!     (e.g. `x` as `variable_id`, `!x` as `-variable_id`).
 //! - A utility function `convert` to transform a literal of one type into another.
 
 use std::fmt::Debug;
@@ -51,8 +51,8 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
     ///
     /// * `var`: The `Variable` identifier.
     /// * `polarity`: The polarity of the literal. Conventionally:
-    ///   - `true` indicates a positive literal (e.g., `x_var`).
-    ///   - `false` indicates a negative literal (e.g., `!x_var`).
+    ///   - `true` indicates a positive literal (e.g. `x_var`).
+    ///   - `false` indicates a negative literal (e.g. `!x_var`).
     fn new(var: Variable, polarity: bool) -> Self;
 
     /// Returns the `Variable` identifier of this literal.
@@ -61,8 +61,8 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
     /// Returns the polarity of this literal.
     ///
     /// Convention:
-    /// - `true` for a positive literal (e.g., `x_i`).
-    /// - `false` for a negative literal (e.g., `!x_i`).
+    /// - `true` for a positive literal (e.g. `x_i`).
+    /// - `false` for a negative literal (e.g. `!x_i`).
     fn polarity(self) -> bool;
 
     /// Returns the negated version of this literal.
@@ -71,13 +71,13 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
     #[must_use]
     fn negated(self) -> Self;
 
-    /// Checks if the literal is negated (i.e., has negative polarity).
+    /// Checks if the literal is negated (i.e. has negative polarity).
     /// This is equivalent to `!self.polarity()`.
     fn is_negated(self) -> bool {
         !self.polarity()
     }
 
-    /// Checks if the literal is positive (i.e., has positive polarity).
+    /// Checks if the literal is positive (i.e. has positive polarity).
     /// This is equivalent to `self.polarity()`.
     /// The original code had `!self.polarity()` for `is_positive`, which is incorrect
     /// if `polarity() == true` means positive. Corrected to `self.polarity()`.
@@ -109,7 +109,7 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
     /// # Panics
     ///
     /// `self.variable() as i32` may panic if `self.variable()` (a `u32`) is too large
-    /// to fit in an `i32` (i.e., > `i32::MAX`). `clippy::cast_possible_wrap` is allowed.
+    /// to fit in an `i32` (i.e. > `i32::MAX`). `clippy::cast_possible_wrap` is allowed.
     fn to_i32(&self) -> i32 {
         #[allow(clippy::cast_possible_wrap)]
         let var_signed = self.variable() as i32;
@@ -122,7 +122,7 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
 
     /// Converts the literal to a `usize` index.
     ///
-    /// This is often used for direct array indexing (e.g., in watch lists or occurrence lists).
+    /// This is used for direct array indexing (e.g. in watch lists or vsids lists).
     /// A common mapping is `2*variable_id + polarity_bit`, where `polarity_bit` is
     /// 0 for one polarity and 1 for the other.
     /// This default implementation uses `polarity_bit = 1` for positive (`polarity() == true`)
@@ -202,7 +202,7 @@ impl Literal for PackedLiteral {
 /// A straightforward literal representation using a struct.
 ///
 /// Stores the variable ID and polarity in separate fields.
-/// Less memory-efficient than `PackedLiteral` if not optimized well by the compiler,
+/// Less memory-efficient than `PackedLiteral` if not optimised well by the compiler,
 /// but very clear.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct StructLiteral {
@@ -294,17 +294,13 @@ impl Literal for NegativeLiteral {
     /// Creates a new `NegativeLiteral`.
     /// If `polarity` is true (positive literal), stores `var` as positive `i32`.
     /// If `polarity` is false (negative literal), stores `var` as negative `i32`.
-    /// The original implementation `var * (1 - 2 * p)` where `p = !polarity` seems overly complex.
-    /// Simplified: if positive, use `var_as_i32`; if negative, use `-var_as_i32`.
     #[inline]
     fn new(var: Variable, polarity: bool) -> Self {
         #[allow(clippy::cast_possible_wrap)]
-        let var_signed = var as i32;
-        if polarity {
-            Self(var_signed)
-        } else {
-            Self(-var_signed)
-        }
+        let var = var as i32;
+        let p = i32::from(!polarity); // 1 if polarity is false, 0 if true.
+        let var = var * (1 - 2 * p);
+        Self(var)
     }
 
     /// Extracts the variable ID (always positive).

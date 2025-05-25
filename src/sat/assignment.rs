@@ -1,8 +1,4 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-// Module for variable assignment and state management in the SAT solvers.
-// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimization
-// with preconditions managed by the logic.
-// Allowing specific casts that are understood within the context of variable IDs and solver logic.
 #![allow(
     unsafe_code,
     clippy::cast_possible_truncation,
@@ -10,8 +6,10 @@
 )]
 
 //! This module defines the `Assignment` trait and its implementations for managing variable states
-//! in SAT solvers.
+//! in the SAT solvers.
+//!
 //! It provides a way to track whether variables are assigned true, false, or remain unassigned.
+//!
 //! It includes two main implementations:
 //! - `VecAssignment`: Uses a `Vec<VarState>` for dense variable sets.
 //! - `HashMapAssignment`: Uses an `FxHashMap<Variable, VarState>` for sparse or non-contiguous variable sets.
@@ -109,7 +107,7 @@ impl From<Option<bool>> for VarState {
 /// This trait allows for different underlying data structures (e.g. `Vec`, `HashMap`)
 /// to store and manage the states of variables in a SAT solver.
 /// Variables are typically represented by `usize` indices for direct access,
-/// or `Variable` (often a `u32` or `usize` alias) for semantic clarity.
+/// or `Variable` (a `u32` alias) for semantic clarity.
 /// Assumes 0-indexed variables if `Variable` is a numeric type used as an index.
 pub trait Assignment:
     Index<usize, Output = VarState> + IndexMut<usize, Output = VarState> + Debug + Clone
@@ -158,11 +156,7 @@ pub trait Assignment:
 
     /// Retrieves the current set of assigned variables as a `Solutions` object.
     ///
-    /// `Solutions` typically expects 1-indexed variable IDs for DIMACS compatibility.
-    /// Implementations should handle the conversion if variables are stored 0-indexed.
-    /// The provided code assumes `Solutions` uses 0-indexed variable IDs if `i as i32` is used directly.
-    /// If `Solutions` uses 1-indexed variable IDs, `(i + 1) as i32` or similar should be used.
-    /// Based on test results, it appears `Solutions` is compatible with 0-indexed variable IDs directly.
+    /// `Solutions` expects 1-indexed variable IDs for DIMACS compatibility.
     fn get_solutions(&self) -> Solutions;
 
     /// Checks if a specific variable is assigned a truth value.
@@ -234,8 +228,7 @@ pub trait Assignment:
 /// This implementation is efficient for dense sets of variables, where variable IDs
 /// are contiguous and start from 0 (i.e. `0, 1, ..., n-1`).
 /// Indexing with a `usize` value greater than or equal to the number of variables
-/// will result in a panic (or Undefined Behavior if `get_unchecked` is used without
-/// guaranteed bounds safety, though standard `Index` impls should panic).
+/// will result in a panic.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VecAssignment {
     /// Stores the state of each variable. The index in the vector corresponds to the `Variable` ID.
@@ -251,7 +244,7 @@ impl Index<usize> for VecAssignment {
     ///
     /// Panics if `index` is out of bounds.
     /// The `unsafe get_unchecked` is used for performance, assuming valid indices
-    /// from internal logic. Public usage should respect bounds.
+    /// from internal logic.
     fn index(&self, index: usize) -> &Self::Output {
         // Safety: Caller must ensure index is within bounds [0, states.len()).
         // This should never fault when used correctly
@@ -344,8 +337,6 @@ impl Index<usize> for HashMapAssignment {
     ///
     /// If the variable (converted from `index`) is not in the map,
     /// it's treated as `Unassigned`.
-    /// Note: `index as Variable` may truncate if `usize` is larger than `Variable`'s underlying type
-    /// and `index` exceeds `Variable`'s range.
     fn index(&self, index: usize) -> &Self::Output {
         #[allow(clippy::cast_possible_truncation)]
         self.map
@@ -359,7 +350,6 @@ impl IndexMut<usize> for HashMapAssignment {
     ///
     /// If the variable (converted from `index`) is not in the map, it's inserted
     /// with `VarState::Unassigned` before returning a mutable reference.
-    /// Note: `index as Variable` may truncate.
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         #[allow(clippy::cast_possible_truncation)]
         self.map
@@ -447,6 +437,7 @@ mod tests {
         assert!(VarState::Assigned(false).is_false());
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn test_assignment<A: Assignment>(a: &mut A) {
         a.set(1, true);
         a.set(2, false);

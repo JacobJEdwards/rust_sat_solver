@@ -66,50 +66,17 @@ impl<const N: usize> From<&[&[usize; N]; N]> for Board {
     ///
     /// This is useful for creating a `Board` from statically defined Sudoku puzzles
     /// where rows are defined as separate arrays.
-    ///
-    /// # Example
-    /// ```
-    /// # // Assuming Board struct is defined in this scope or imported.
-    /// # #[derive(Debug, Clone, PartialEq, Eq)]
-    /// # pub struct Board(Vec<Vec<usize>>);
-    /// # impl Board { pub const fn new(board: Vec<Vec<usize>>) -> Self { Self(board) } }
-    /// # impl<const N_INNER: usize> From<&[&[usize; N_INNER]; N_INNER]> for Board {
-    /// #  fn from(board: &[&[usize; N_INNER]; N_INNER]) -> Self {
-    /// #    Self::new(board.iter().map(|r| r.to_vec()).collect())
-    /// #  }
-    /// # }
-    /// #
-    /// let r1: [usize; 4] = [5, 3, 0, 0];
-    /// let r2: [usize; 4] = [6, 0, 0, 1];
-    /// let r3: [usize; 4] = [0, 9, 8, 0];
-    /// let r4: [usize; 4] = [0, 0, 0, 0];
-    /// let board_data: [&[usize; 4]; 4] = [&r1, &r2, &r3, &r4];
-    /// let board = Board::from(&board_data);
-    /// assert_eq!(board, Board::new(vec![
-    ///     vec![5, 3, 0, 0],
-    ///     vec![6, 0, 0, 1],
-    ///     vec![0, 9, 8, 0],
-    ///     vec![0, 0, 0, 0],
-    /// ]));
-    /// ```
     fn from(board: &[&[usize; N]; N]) -> Self {
         Self::new(board.iter().map(|r| r.to_vec()).collect())
     }
 }
 
 /// An example 4x4 Sudoku puzzle. Values are 1-4, 0 for empty.
-pub const EXAMPLE_FOUR: [[usize; 4]; 4] = [[5, 3, 0, 0], [6, 0, 0, 1], [0, 9, 8, 0], [0, 0, 0, 0]];
-// Note: EXAMPLE_FOUR contains values (5,6,9,8,1) that are out of range for a 4x4 Sudoku if parsed directly.
-// This constant seems to be a general example of a 4x4 array, not necessarily a valid 4x4 Sudoku puzzle start.
-// For Sudoku::new(Board::from(EXAMPLE_FOUR.to_vec()...)) to work, values must be <= 4.
-// If this is used as a raw board for `Sudoku::new`, and `parse_sudoku` logic is applied,
-// numbers > size (4) would be an error.
-// If the values are intended for a larger Sudoku (e.g. 9x9 or 16x16), then it's a partial board.
-// Given the name, it's likely a typo and should be a valid 4x4 start.
-// E.g., [[1,0,0,2],[0,0,3,0],[0,4,0,0],[3,0,0,4]]
-// For the purpose of this task, the constant itself is not changed.
+#[allow(dead_code)]
+pub const EXAMPLE_FOUR: [[usize; 4]; 4] = [[2, 3, 0, 0], [4, 0, 0, 1], [0, 1, 2, 0], [0, 0, 0, 0]];
 
 /// An example 9x9 Sudoku puzzle. Values are 1-9, 0 for empty.
+#[allow(dead_code)]
 pub const EXAMPLE_NINE: [[usize; 9]; 9] = [
     [5, 3, 0, 0, 7, 0, 0, 0, 0],
     [6, 0, 0, 1, 9, 5, 0, 0, 0],
@@ -123,6 +90,7 @@ pub const EXAMPLE_NINE: [[usize; 9]; 9] = [
 ];
 
 /// An example 16x16 Sudoku puzzle. Values are 1-16, 0 for empty.
+#[allow(dead_code)]
 pub const EXAMPLE_SIXTEEN: [[usize; 16]; 16] = [
     [0, 11, 0, 0, 0, 2, 3, 14, 0, 0, 9, 12, 0, 0, 0, 16],
     [15, 12, 0, 0, 0, 11, 0, 1, 13, 10, 0, 0, 0, 0, 7, 2],
@@ -143,6 +111,7 @@ pub const EXAMPLE_SIXTEEN: [[usize; 16]; 16] = [
 ];
 
 /// An example 25x25 Sudoku puzzle. Values are 1-25, 0 for empty.
+#[allow(dead_code)]
 pub const EXAMPLE_TWENTY_FIVE: [[usize; 25]; 25] = [
     [
         0, 2, 0, 0, 0, 3, 14, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 13, 4, 24, 0, 7, 1, 0, 0,
@@ -277,7 +246,7 @@ impl Display for Size {
 pub struct Sudoku {
     /// The game board.
     pub board: Board,
-    /// The dimension of the Sudoku grid (e.g., 9 for a 9x9 grid).
+    /// The dimension of the Sudoku grid (e.g. 9 for a 9x9 grid).
     pub size: Size,
 }
 
@@ -330,11 +299,10 @@ impl Variable {
     #[must_use]
     pub const fn encode(&self, size: Size) -> usize {
         let board_size = size as usize;
-        let row = self.row; // 1-indexed
-        let col = self.col; // 1-indexed
-        let num = self.num; // 1-indexed
+        let row = self.row; 
+        let col = self.col;
+        let num = self.num;
 
-        // Formula ensures 1-based indexing for the resulting variable ID.
         ((row - 1) * board_size * board_size + (col - 1) * board_size + (num - 1)) + 1
     }
 }
@@ -345,16 +313,16 @@ impl Size {
     #[must_use]
     pub const fn block_size(self) -> usize {
         match self {
-            Self::Four => 2,       // 4x4 grid has 2x2 blocks
-            Self::Nine => 3,       // 9x9 grid has 3x3 blocks
-            Self::Sixteen => 4,    // 16x16 grid has 4x4 blocks
-            Self::TwentyFive => 5, // 25x25 grid has 5x5 blocks
+            Self::Four => 2,       
+            Self::Nine => 3,       
+            Self::Sixteen => 4,    
+            Self::TwentyFive => 5, 
         }
     }
 }
 
 /// Generates SAT clauses ensuring each cell contains at least one number.
-/// (X_r,c,1 OR X_r,c,2 OR ... OR X_r,c,N) for each cell (r,c).
+/// (`X_r,c,1` OR `X_r,c,2` OR ... OR `X_r,c,N`) for each cell (r,c).
 fn generate_cell_clauses(size: usize) -> Vec<Vec<i32>> {
     let mut clauses = vec![];
     for row in 1..=size {
@@ -376,16 +344,13 @@ fn generate_cell_clauses(size: usize) -> Vec<Vec<i32>> {
 }
 
 /// Generates SAT clauses ensuring no number appears more than once in each row.
-/// (-X_r,c1,k OR -X_r,c2,k) for each row r, number k, and pair of columns c1 < c2.
+/// (-`X_r,c1,k` OR -`X_r,c2,k`) for each row r, number k, and pair of columns c1 < c2.
 fn generate_row_clauses(size: usize) -> Vec<Vec<i32>> {
     let mut clauses = vec![];
     for row in 1..=size {
         for num in 1..=size {
             for col1 in 1..=size {
                 for col2 in (col1 + 1)..=size {
-                    // Original code had `if col1 > col2 { continue; }` which is redundant
-                    // due to `col2` starting from `col1 + 1`.
-                    // This redundant check is kept as per "code must not change".
                     if col1 > col2 {
                         continue;
                     }
@@ -407,18 +372,13 @@ fn generate_row_clauses(size: usize) -> Vec<Vec<i32>> {
 }
 
 /// Generates SAT clauses ensuring no number appears more than once in each column.
-/// (-X_r1,c,k OR -X_r2,c,k) for each column c, number k, and pair of rows r1 < r2.
+/// (-`X_r1,c,k` OR -`X_r2,c,k`) for each column c, number k, and pair of rows r1 < r2.
 fn generate_col_clauses(size: usize) -> Vec<Vec<i32>> {
     let mut clauses = vec![];
     for col in 1..=size {
         for num in 1..=size {
             for row1 in 1..=size {
                 for row2 in (row1 + 1)..=size {
-                    // Original code had `if row1 > row2 { continue; }` which is redundant.
-                    // Kept as per "code must not change".
-                    if row1 > row2 {
-                        continue;
-                    }
                     let var1 = Variable::new(row1, col, num);
                     let var2 = Variable::new(row2, col, num);
 
@@ -436,17 +396,13 @@ fn generate_col_clauses(size: usize) -> Vec<Vec<i32>> {
 }
 
 /// Generates SAT clauses ensuring no number appears more than once in each block (subgrid).
-/// (-X_r1,c1,k OR -X_r2,c2,k) for each number k and pair of distinct cells (r1,c1), (r2,c2) within the same block.
+/// (-`X_r1,c1,k` OR -`X_r2,c2,k`) for each number k and pair of distinct cells (r1,c1), (r2,c2) within the same block.
 fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>> {
     let mut clauses = Vec::new();
     for n in 1..=board_size {
-        // For each number
         for br_start_idx in (0..board_size).step_by(block_size) {
-            // Top-row index (0-based) of a block
             for bc_start_idx in (0..board_size).step_by(block_size) {
-                // Left-col index (0-based) of a block
                 let mut block_cells = Vec::new();
-                // Collect all cells (1-indexed) in the current block
                 for r_offset in 0..block_size {
                     for c_offset in 0..block_size {
                         block_cells
@@ -454,17 +410,10 @@ fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>>
                     }
                 }
 
-                // Generate pairwise constraints for these cells for number 'n'
                 for i in 0..block_cells.len() {
                     for j in i + 1..block_cells.len() {
                         let (r1, c1) = block_cells[i];
                         let (r2, c2) = block_cells[j];
-                        // Original code had `if (r1, c1) > (r2, c2) { continue; }` which is redundant
-                        // because `block_cells` are generated in lexicographical order and `j > i`.
-                        // Kept as per "code must not change".
-                        if (r1, c1) > (r2, c2) {
-                            continue;
-                        }
                         let var1 = Variable::new(r1, c1, n);
                         let var2 = Variable::new(r2, c2, n);
 
@@ -487,16 +436,12 @@ fn generate_block_clauses(board_size: usize, block_size: usize) -> Vec<Vec<i32>>
 }
 
 /// Generates SAT clauses for the pre-filled cells in the Sudoku board.
-/// (X_r,c,k) for each cell (r,c) pre-filled with k.
+/// (`X_r,c,k`) for each cell (r,c) pre-filled with k.
 fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
     let mut clauses = vec![];
     for (r_idx, row_vec) in board.0.iter().enumerate() {
-        // r_idx is 0-indexed
         for (c_idx, &n_val) in row_vec.iter().enumerate() {
-            // c_idx is 0-indexed
             if n_val != 0 {
-                // If the cell is pre-filled
-                // Convert 0-indexed r_idx, c_idx to 1-indexed row, col for Variable
                 let var = Variable::new(r_idx + 1, c_idx + 1, n_val);
                 clauses.push(vec![i32::try_from(
                     var.encode(Size::try_from(size).expect("Invalid size")),
@@ -516,7 +461,7 @@ impl Sudoku {
     /// # Panics
     ///
     /// Panics if the board dimensions do not correspond to a supported `Size`
-    /// (e.g., if `board.0.len()` is not 4, 9, 16, or 25).
+    /// (e.g. if `board.0.len()` is not 4, 9, 16, or 25).
     #[must_use]
     pub fn new(board: Board) -> Self {
         let size_val = board.0.len();
@@ -694,7 +639,10 @@ impl From<Sudoku> for Board {
 /// - If a line has more items than `size` (due to `board[i][j]` out-of-bounds access).
 /// - If `size` (derived from `lines.len()`) is not a supported Sudoku size (4, 9, 16, 25),
 ///   this function will return `Ok(Sudoku)` but the caller might panic if `Sudoku::new` (called internally) panics.
-///   More accurately, `Sudoku::new` inside this function will panic.
+///
+/// # Errors
+///
+/// Returns `Err(String)` if the input string is not a valid Sudoku representation,
 pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
     let lines = sudoku.lines().collect_vec();
     let size = lines.len();
@@ -709,7 +657,6 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
                 if num > size {
                     return Err(format!("Invalid Sudoku: Number {num} exceeds size {size}"));
                 }
-                // The following line can panic if `j >= size` (i.e. too many numbers on a line)
                 board[i][j] = num;
             } else {
                 return Err(format!("Invalid Sudoku: Invalid character {c}"));
@@ -717,19 +664,6 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
         }
     }
 
-    // These checks are effectively no-ops because `board` is initialized as `size`x`size`.
-    // They don't validate the input string's consistency regarding column counts per line.
-    if board.len() != size {
-        return Err("Invalid Sudoku: Inconsistent row lengths".to_string());
-    }
-
-    for row in &board {
-        if row.len() != size {
-            return Err("Invalid Sudoku: Inconsistent column lengths".to_string());
-        }
-    }
-
-    // Sudoku::new will panic here if `size` is not 4, 9, 16, or 25.
     Ok(Sudoku::new(Board::new(board)))
 }
 
@@ -748,7 +682,10 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
 /// `Err(String)` if the file cannot be read or its content is invalid according to `parse_sudoku`.
 ///
 /// # Panics
-/// Panics under the same conditions as `parse_sudoku` (e.g. invalid size, too many numbers per line).
+/// Under the same conditions as `parse_sudoku` (e.g. invalid size, too many numbers per line).
+///
+/// # Errors
+/// Returns `Err(String)` if the file cannot be read or if its content is not a valid Sudoku representation.
 pub fn parse_sudoku_file(file_path: &str) -> Result<Sudoku, String> {
     let content = std::fs::read_to_string(file_path).map_err(|e| e.to_string())?;
     parse_sudoku(&content)
@@ -758,13 +695,12 @@ pub fn parse_sudoku_file(file_path: &str) -> Result<Sudoku, String> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    // Test Board
     #[test]
     fn board_new_and_display() {
         let data = vec![vec![1, 0], vec![0, 2]];
         let board = Board::new(data.clone());
         assert_eq!(board.0, data);
-        assert_eq!(format!("{}", board), "1 0\n0 2\n");
+        assert_eq!(format!("{board}"), "1 0\n0 2\n");
     }
 
     #[test]
@@ -799,7 +735,6 @@ mod tests {
         assert_eq!(board, Board::new(vec![vec![1, 0], vec![0, 2]]));
     }
 
-    // Test Size
     #[test]
     fn size_try_from_usize() {
         assert_eq!(Size::try_from(4), Ok(Size::Four));
@@ -832,7 +767,6 @@ mod tests {
         assert_eq!(Size::TwentyFive.block_size(), 5);
     }
 
-    // Test Variable
     #[test]
     fn variable_new_and_encode() {
         let var = Variable::new(1, 1, 1);
@@ -845,16 +779,12 @@ mod tests {
             }
         );
 
-        // Test encoding for 4x4
-        // (r-1)*16 + (c-1)*4 + (n-1) + 1
         assert_eq!(Variable::new(1, 1, 1).encode(Size::Four), 1); // (0*16) + (0*4) + 0 + 1 = 1
         assert_eq!(Variable::new(1, 1, 4).encode(Size::Four), 4); // (0*16) + (0*4) + 3 + 1 = 4
         assert_eq!(Variable::new(1, 2, 1).encode(Size::Four), 5); // (0*16) + (1*4) + 0 + 1 = 5
         assert_eq!(Variable::new(2, 1, 1).encode(Size::Four), 17); // (1*16) + (0*4) + 0 + 1 = 17
         assert_eq!(Variable::new(4, 4, 4).encode(Size::Four), 64); // (3*16) + (3*4) + 3 + 1 = 48+12+3+1 = 64
 
-        // Test encoding for 9x9
-        // (r-1)*81 + (c-1)*9 + (n-1) + 1
         assert_eq!(Variable::new(1, 1, 1).encode(Size::Nine), 1);
         assert_eq!(Variable::new(9, 9, 9).encode(Size::Nine), 729); // (8*81) + (8*9) + 8 + 1 = 648+72+8+1 = 729
     }
@@ -872,9 +802,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "Invalid size for Sudoku board")]
     fn sudoku_new_invalid_size() {
-        let board_data = vec![vec![0; 5]; 5]; // 5x5 is not a supported size
+        let board_data = vec![vec![0; 5]; 5];
         let board = Board::new(board_data);
-        Sudoku::new(board); // This should panic
+        let _ = Sudoku::new(board);
     }
 
     #[test]
@@ -887,20 +817,18 @@ mod tests {
         ];
         let sudoku = Sudoku::new(Board::new(board_data));
         let expected_display = "Sudoku { size: 4x4 }\n1 0 0 0\n0 2 0 0\n0 0 3 0\n0 0 0 4\n";
-        assert_eq!(format!("{}", sudoku), expected_display);
+        assert_eq!(format!("{sudoku}"), expected_display);
     }
 
     #[test]
     fn sudoku_iter() {
-        let board_data = vec![vec![1, 2], vec![3, 4]];
-        // This is not a valid Sudoku size, so we use a supported size like 4x4 and fill a part of it.
         let sudoku_board_data = vec![
             vec![1, 2, 0, 0],
             vec![3, 4, 0, 0],
             vec![0, 0, 0, 0],
             vec![0, 0, 0, 0],
         ];
-        let sudoku = Sudoku::from(Board::from(sudoku_board_data.clone()));
+        let sudoku = Sudoku::from(Board::from(sudoku_board_data));
         let mut iter = sudoku.iter();
         assert_eq!(iter.next(), Some(vec![1, 2, 0, 0]));
         assert_eq!(iter.next(), Some(vec![3, 4, 0, 0]));
@@ -927,7 +855,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Invalid size for Sudoku board")]
     fn parse_sudoku_invalid_size_panic() {
-        let s = "1 0\n0 1"; // 2x2, Sudoku::new will panic
+        let s = "1 0\n0 1";
         parse_sudoku(s).unwrap();
     }
 
@@ -949,18 +877,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic] // Panics due to board[i][j] access: j=4, size=4, so board[i][4] is out of bounds.
+    #[should_panic]
     fn parse_sudoku_too_many_numbers_in_line() {
         let s = "1 0 0 0 5\n0 2 0 0\n0 0 0 4\n0 0 1 0";
         match parse_sudoku(s) {
             Ok(_) => panic!("Should have failed or panicked."),
-            Err(e) => panic!("Should have panicked, not returned Err: {}", e),
+            Err(e) => panic!("Should have panicked, not returned Err: {e}"),
         }
     }
 
     #[test]
     fn parse_sudoku_too_few_numbers_in_line() {
-        // Treated as trailing zeros, which is valid.
         let s = "1 0\n0 2 0 0\n0 0 0 4\n0 0 1 0";
         let sudoku = parse_sudoku(s).unwrap();
         let expected_board = Board::new(vec![
@@ -974,7 +901,6 @@ mod tests {
 
     #[test]
     fn parse_sudoku_empty_line_behavior() {
-        // Empty line makes size=5. Sudoku::new panics.
         let s = "1 0 3 0\n0 2 0 0\n\n0 0 0 4\n0 0 1 0";
         assert!(
             std::panic::catch_unwind(|| parse_sudoku(s)).is_err(),
@@ -990,14 +916,9 @@ mod tests {
 
     #[test]
     fn sudoku_decode_basic() {
-        let initial_board_data = vec![vec![0; 4]; 4]; // Empty 4x4
+        let initial_board_data = vec![vec![0; 4]; 4];
         let sudoku = Sudoku::new(Board::new(initial_board_data));
 
-        // Suppose SAT solver found this solution for a 4x4:
-        // 1 2 3 4
-        // 3 4 1 2
-        // 2 1 4 3
-        // 4 3 2 1
         let mut solution_vars = Vec::new();
         let solution_grid: [[usize; 4]; 4] =
             [[1, 2, 3, 4], [3, 4, 1, 2], [2, 1, 4, 3], [4, 3, 2, 1]];
@@ -1005,12 +926,12 @@ mod tests {
         for r in 0..4 {
             for c in 0..4 {
                 let num = solution_grid[r][c];
+                #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
                 solution_vars.push(Variable::new(r + 1, c + 1, num).encode(Size::Four) as i32);
             }
         }
 
-        // Use mock Solutions
-        let solutions = crate::sat::solver::Solutions::new(&solution_vars);
+        let solutions = Solutions::new(&solution_vars);
         let decoded_sudoku = sudoku.decode(&solutions);
 
         let expected_board_data: Vec<Vec<usize>> =
@@ -1019,50 +940,40 @@ mod tests {
         assert_eq!(decoded_sudoku.size, Size::Four);
     }
 
-    // Test individual clause generation functions for basic properties
-    // These are private, but we can test them via to_cnf or by making them temporarily pub for testing.
-    // Here, we'll check to_cnf's clause list content more deeply for a small example.
-
     #[test]
     fn test_generate_cell_clauses_content() {
-        // For 1x1 (not supported by Size, use 4x4 and check a specific cell)
-        // Cell (1,1) must be 1 or 2 or 3 or 4
-        // Var(1,1,1) = 1, Var(1,1,2) = 2, Var(1,1,3) = 3, Var(1,1,4) = 4
         let cell_clauses = generate_cell_clauses(4);
         let clause_for_cell_1_1 = vec![1, 2, 3, 4];
         assert!(cell_clauses.contains(&clause_for_cell_1_1));
-        assert_eq!(cell_clauses.len(), 4 * 4); // 16 cells
+        assert_eq!(cell_clauses.len(), 4 * 4);
     }
 
     #[test]
     fn test_generate_row_clauses_content() {
-        // For 4x4, row 1, num 1:
-        // -Var(1,1,1) OR -Var(1,2,1)  => -1 or -5
-        // -Var(1,1,1) OR -Var(1,3,1)  => -1 or -9
-        // -Var(1,1,1) OR -Var(1,4,1)  => -1 or -13
-        // -Var(1,2,1) OR -Var(1,3,1)  => -5 or -9
-        // etc.
         let row_clauses = generate_row_clauses(4);
+        #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
         let var111 = Variable::new(1, 1, 1).encode(Size::Four) as i32;
+        #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
         let var121 = Variable::new(1, 2, 1).encode(Size::Four) as i32;
         let clause_example = vec![-var111, -var121]; // {-1, -5}
         assert!(row_clauses.contains(&clause_example));
-        // Num clauses: 4 rows * 4 nums * (4*3/2) pairs = 4 * 4 * 6 = 96
         assert_eq!(row_clauses.len(), 96);
     }
 
     #[test]
     fn test_generate_pre_filled_clauses() {
         let board_data = vec![
-            vec![1, 0, 0, 0], // Cell (1,1) has 1
-            vec![0, 2, 0, 0], // Cell (2,2) has 2
+            vec![1, 0, 0, 0],
+            vec![0, 2, 0, 0],
             vec![0, 0, 0, 0],
             vec![0, 0, 0, 0],
         ];
         let board = Board::new(board_data);
         let pre_filled = generate_pre_filled_clauses(4, &board);
 
+        #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
         let var111 = Variable::new(1, 1, 1).encode(Size::Four) as i32;
+        #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
         let var222 = Variable::new(2, 2, 2).encode(Size::Four) as i32;
 
         let expected_clauses: HashSet<Vec<i32>> =

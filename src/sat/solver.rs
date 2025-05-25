@@ -61,7 +61,6 @@ pub struct Solutions {
 impl Display for Solutions {
     /// Formats the solution as a space-separated string of assigned literals.
     /// For example: "1 -2 3" means x1=true, x2=false, x3=true.
-    /// The original `Display` impl had a slight redundancy in formatting negative numbers.
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let assignments_str: Vec<String> = self
             .assignments
@@ -215,7 +214,7 @@ pub trait SolverConfig: Debug + Clone {
 ///         Literal = L,
 ///         LiteralStorage = S,
 ///         Assignment = A,
-///         VariableSelector = Vsids, // Assuming Vsids can be generic or concrete for L
+///         VariableSelector = Vsids<L>, 
 ///         Propagator = WatchedLiterals<L, S, A>,
 ///         Restarter = Fixed<100>,
 ///         ClauseManager = NoClauseManagement<L, S>,
@@ -298,7 +297,7 @@ solver_config!(
 /// This allows different solver implementations to adhere to a common API while being
 /// configurable with various underlying strategies and data structures.
 pub trait Solver<C: SolverConfig = DefaultConfig> {
-    /// Creates a new instance of the solver, initialized with the given CNF formula.
+    /// Creates a new instance of the solver, initialised with the given CNF formula.
     ///
     /// # Arguments
     ///
@@ -326,6 +325,7 @@ pub trait Solver<C: SolverConfig = DefaultConfig> {
 
     /// Provides a way to debug the solver's internal state.
     /// The exact output or behavior is implementation-defined.
+    #[allow(dead_code)]
     fn debug(&mut self);
 }
 

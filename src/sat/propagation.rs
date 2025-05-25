@@ -12,7 +12,7 @@
 //! - `WatchedLiterals`: An efficient implementation of unit propagation using the
 //!   watched literals scheme. Each clause watches two of its non-false literals.
 //!   Propagation only needs to occur when one of these watched literals becomes false.
-//! - `UnitSearch`: A simpler, less optimized propagator that iterates through all clauses
+//! - `UnitSearch`: A simpler, less optimised propagator that iterates through all clauses
 //!   to find unit clauses or conflicts.
 //! - `UnitPropagationWithPureLiterals`: A propagator that combines unit propagation
 //!   with the heuristic of assigning pure literals (literals that appear with only
@@ -35,7 +35,7 @@ use std::ops::{Index, IndexMut};
 /// Trait defining the interface for a literal propagation mechanism.
 ///
 /// Implementors of this trait are responsible for identifying and applying
-/// consequences of the current partial assignment (e.g., unit propagation).
+/// consequences of the current partial assignment (e.g. unit propagation).
 ///
 /// # Type Parameters
 ///
@@ -43,7 +43,7 @@ use std::ops::{Index, IndexMut};
 /// * `S`: The `LiteralStorage` type for clauses.
 /// * `A`: The `Assignment` type managing variable states.
 pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + Clone {
-    /// Creates a new propagator instance, potentially initializing it based on the CNF.
+    /// Creates a new propagator instance
     ///
     /// # Arguments
     ///
@@ -69,7 +69,7 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
     ///
     /// * `trail`: Mutable reference to the `Trail`, where new propagations are enqueued.
     /// * `assignment`: Mutable reference to the `Assignment` state.
-    /// * `cnf`: Mutable reference to the `Cnf` formula (e.g., for clause access, modification for watched literals).
+    /// * `cnf`: Mutable reference to the `Cnf` formula (e.g. for clause access, modification for watched literals).
     ///
     /// # Returns
     ///
@@ -103,9 +103,6 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
     ///
     /// When learnt clauses are removed or re-indexed during clause database cleaning,
     /// the propagator (especially watched literals) needs to update its references.
-    /// `learnt_idx` is typically the new start index of learnt clauses after cleaning,
-    /// or a boundary index. Watches to clauses beyond this boundary might be removed
-    /// or re-evaluated.
     ///
     /// # Arguments
     ///
@@ -116,7 +113,6 @@ pub trait Propagator<L: Literal, S: LiteralStorage<L>, A: Assignment>: Debug + C
 }
 
 /// Implements unit propagation using the watched literals scheme (also known as two-watched literals or 2WL).
-/// (Documentation from previous step remains valid and is omitted here for brevity)
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WatchedLiterals<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize = 8> {
     watches: Vec<SmallVec<[usize; N]>>,
@@ -177,10 +173,9 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
         while trail.curr_idx < trail.len() {
             let lit = trail[trail.curr_idx].lit;
             trail.curr_idx = trail.curr_idx.wrapping_add(1);
-            assignment.assign(lit); // Original code has this assignment here.
+            assignment.assign(lit);
             self.num_propagations = self.num_propagations.wrapping_add(1);
 
-            // Must clone watch list as process_clause can modify it.
             let watch_list_clone = self[lit.negated().index()].clone();
             if let Some(idx) = self.propagate_watch(&watch_list_clone, trail, assignment, cnf) {
                 return Some(idx);
@@ -277,9 +272,15 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
         trail: &mut Trail<L, S>,
     ) {
         if let Some(new_lit_idx) = Self::find_new_watch(clause_idx, cnf, assignment) {
-            self.handle_new_watch(clause_idx, new_lit_idx, cnf)
+            self.handle_new_watch(clause_idx, new_lit_idx, cnf);
         } else {
-            debug_assert!(assignment.literal_value(other_lit).is_none(), "In handle_false, other_lit ({:?}) was expected to be unassigned but is {:?}. Clause idx {}", other_lit, assignment.literal_value(other_lit), clause_idx);
+            debug_assert!(
+                assignment.literal_value(other_lit).is_none(),
+                "In handle_false, \
+            other_lit ({other_lit:?}) was expected to be unassigned but is {:?}. Clause idx \
+            {clause_idx}",
+                assignment.literal_value(other_lit)
+            );
             Self::add_propagation(other_lit, clause_idx, trail);
         }
     }
@@ -367,7 +368,6 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment, const N: usize> IndexMut<L
 }
 
 /// A simple unit propagation strategy that iterates through all clauses.
-/// (Documentation from previous step remains valid)
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UnitSearch<L: Literal, S: LiteralStorage<L>, A: Assignment>(
     usize, // num_propagations
@@ -650,7 +650,6 @@ mod tests {
         assert!(!propagator[lit(-4)].contains(&0));
     }
 
-    // Tests for UnitSearch
     #[test]
     fn test_unit_search_simple_propagation() {
         let (mut cnf, mut trail, mut assignment) =

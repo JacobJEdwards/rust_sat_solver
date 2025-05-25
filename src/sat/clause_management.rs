@@ -6,7 +6,7 @@
 //! during conflict analysis, the clause database can grow very large. Effective
 //! management strategies aim to:
 //! - Periodically remove less useful learnt clauses to keep the database size manageable.
-//! - Prioritize keeping "high-quality" clauses (e.g., those with low LBD or high activity).
+//! - Prioritise keeping "high-quality" clauses (e.g. those with low LBD or high activity).
 //! - Decay clause activities to reflect their recent involvement in conflicts.
 //!
 //! This module provides a `ClauseManagement` trait that abstracts these strategies,
@@ -40,9 +40,8 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
     ///
     /// # Arguments
     ///
-    /// * `clauses`: An initial slice of clauses. This might be used to initialize
-    ///   internal structures, though many strategies might not need it
-    ///   if they primarily operate on learnt clauses added later.
+    /// * `clauses`: An initial slice of clauses. This might be used to initialise
+    ///   internal structures
     fn new(clauses: &[Clause<L, S>]) -> Self;
 
     /// Called by the solver after a conflict occurs and a new clause might have been learnt.
@@ -103,7 +102,7 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
 ///
 /// This strategy periodically cleans the learnt clause database by:
 /// 1. Identifying candidate learnt clauses for removal (those not locked by the trail).
-/// 2. Sorting candidates: clauses with LBD <= 2 are prioritized to be kept.
+/// 2. Sorting candidates: clauses with LBD <= 2 are prioritised to be kept.
 ///    Among others, clauses with lower LBD are preferred, and then lower activity (as less active clauses are removed).
 /// 3. Removing roughly half of the worst-ranking candidates.
 /// 4. Clause activities are decayed after each conflict.
@@ -137,7 +136,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
 {
     /// Creates a new `LbdClauseManagement` instance.
     ///
-    /// Initializes internal buffers and sets the cleaning interval based on `N`.
+    /// Initialises internal buffers and sets the cleaning interval based on `N`.
     /// The initial `clauses` slice is used to estimate initial capacities but not directly stored.
     fn new(clauses: &[Clause<L, S>]) -> Self {
         let initial_capacity = clauses.len();
@@ -297,7 +296,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
 
 impl<L: Literal, S: LiteralStorage<L>, const N: usize> LbdClauseManagement<L, S, N> {
     /// Decays the activity of all learnt clauses by a fixed factor.
-    /// This is typically called after each conflict.
+    /// This is called after each conflict.
     fn decay_clause_activities(cnf: &mut Cnf<L, S>) {
         for clause in &mut cnf.clauses[cnf.non_learnt_idx..] {
             clause.decay_activity(DECAY_FACTOR);
@@ -308,8 +307,6 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> LbdClauseManagement<L, S,
 /// A clause management strategy that performs no operations.
 ///
 /// This strategy does not clean the clause database, bump activities, or decay them.
-/// It can be used for baseline comparisons or in scenarios where clause learning/deletion
-/// is not desired or handled differently.
 ///
 /// # Type Parameters
 ///
@@ -331,9 +328,7 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
     }
 
     /// This is a no-op for `NoClauseManagement`.
-    fn on_conflict(&mut self, _cnf: &mut Cnf<L, S>) {
-        // No action needed
-    }
+    fn on_conflict(&mut self, _cnf: &mut Cnf<L, S>) {}
 
     /// Always returns `false` as this strategy never cleans the database.
     fn should_clean_db(&self) -> bool {
@@ -348,13 +343,10 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
         _propagator: &mut P,
         _assignment: &mut A,
     ) {
-        // no action needed
     }
 
     /// This is a no-op for `NoClauseManagement`.
-    fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {
-        // no action needed
-    }
+    fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {}
 
     /// Always returns `0` as no clauses are ever removed.
     fn num_removed(&self) -> usize {

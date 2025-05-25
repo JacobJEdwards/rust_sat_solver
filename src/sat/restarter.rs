@@ -19,7 +19,6 @@
 //!     restarts increases by a fixed amount `N` after each restart.
 //!   - `Never`: A strategy that never triggers a restart.
 
-use fastrand::usize;
 use std::fmt::Debug;
 
 /// Trait defining the interface for restart strategies.
@@ -28,7 +27,7 @@ use std::fmt::Debug;
 /// The decision is typically based on a counter, often representing the number of conflicts
 /// encountered since the last restart.
 pub trait Restarter: Debug + Clone {
-    /// Creates a new instance of the restart strategy, initialized to its starting state.
+    /// Creates a new instance of the restart strategy, initialised to its starting state.
     fn new() -> Self;
 
     /// Returns the number of conflicts (or other units) remaining until the next restart.
@@ -36,7 +35,7 @@ pub trait Restarter: Debug + Clone {
     fn restarts_in(&self) -> usize;
 
     /// Decrements the count of conflicts (or units) remaining until the next restart.
-    /// This is typically called after each conflict in the solver.
+    /// This is called after each conflict in the solver.
     fn increment_restarts_in(&mut self);
 
     /// Performs the actions associated with a restart.
@@ -69,9 +68,9 @@ pub trait Restarter: Debug + Clone {
 
 /// A restart strategy based on the Luby sequence.
 ///
-/// The Luby sequence (u_i) is defined as:
-/// u_i = 2^(k-1) if i = 2^k - 1
-/// u_i = u_(i - 2^(k-1) + 1) if 2^(k-1) <= i < 2^k - 1
+/// The Luby sequence (`u_i`) is defined as:
+/// `u_i` = 2^(k-1) if i = 2^k - 1
+/// `u_i` = u_(i - 2^(k-1) + 1) if 2^(k-1) <= i < 2^k - 1
 ///
 /// This sequence has the property of being optimal for repeating an experiment with unknown
 /// probability distribution of success time. In SAT solvers, it means restarting after
@@ -90,6 +89,28 @@ pub struct Luby<const N: usize> {
     restarts_interval: usize,
     /// The index into the Luby sequence for calculating the next interval.
     restarts_next: usize,
+
+    first: usize,
+    second: usize,
+}
+
+/// The Luby sequence iterator generates the next Luby number multiplied by `N`.
+/// Taken from <https://docs.rs/luby/latest/luby/struct.Luby.html>
+/// This iterator generates the sequence of Luby numbers, which are used to determine
+/// the intervals for restarts in the Luby restart strategy.
+impl<const N: usize> Iterator for Luby<N> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.first & self.first.wrapping_neg() == self.second {
+            self.first += 1;
+            self.second = 1;
+        } else {
+            self.second *= 2;
+        }
+
+        Some(self.second * N)
+    }
 }
 
 impl<const N: usize> Luby<N> {
@@ -116,13 +137,15 @@ impl<const N: usize> Luby<N> {
 impl<const N: usize> Restarter for Luby<N> {
     /// Creates a new `Luby` restarter.
     /// The first restart interval will be `N * luby(1)`.
-    /// `restarts_in` is initialized to 0, meaning it will restart on the first call to `should_restart()`.
+    /// `restarts_in` is initialised to 0, meaning it will restart on the first call to `should_restart()`.
     fn new() -> Self {
         Self {
             restarts: 0,
             restarts_in: 0,
-            restarts_interval: 1,
+            restarts_interval: N,
             restarts_next: 1,
+            first: 1,
+            second: 1,
         }
     }
 
@@ -142,8 +165,12 @@ impl<const N: usize> Restarter for Luby<N> {
     fn restart(&mut self) {
         self.restarts = self.restarts.wrapping_add(1);
         self.restarts_in = self.restarts_interval;
-        self.restarts_interval = Self::luby(self.restarts_next) * N;
-        self.restarts_next = self.restarts_next.wrapping_add(1);
+
+        if let Some(next_interval) = self.next() {
+            self.restarts_interval = next_interval;
+        } else {
+            self.restarts_interval = N;
+        }
     }
 
     fn num_restarts(&self) -> usize {
@@ -172,7 +199,7 @@ pub struct Geometric<const N: usize> {
 
 impl<const N: usize> Restarter for Geometric<N> {
     /// Creates a new `Geometric` restarter.
-    /// `restarts_in` is initialized to 0, meaning it will restart on the first call to `should_restart()`.
+    /// `restarts_in` is initialised to 0, meaning it will restart on the first call to `should_restart()`.
     /// The first interval after the initial restart will be 1, the next will be `1*N`, then `1*N*N`, etc.
     fn new() -> Self {
         Self {
@@ -235,7 +262,7 @@ pub struct Fixed<const N: usize> {
 
 impl<const N: usize> Restarter for Fixed<N> {
     /// Creates a new `Fixed` restarter.
-    /// `restarts_in` is initialized to 0, meaning it will restart on the first call to `should_restart()`.
+    /// `restarts_in` is initialised to 0, meaning it will restart on the first call to `should_restart()`.
     /// The interval for all subsequent restarts will be `N`.
     fn new() -> Self {
         assert!(N > 0, "Fixed interval N must be positive.");
@@ -268,8 +295,6 @@ impl<const N: usize> Restarter for Fixed<N> {
 }
 
 /// A strategy that never triggers a restart.
-///
-/// This can be used to disable restarts or as a baseline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Never {}
 
@@ -279,7 +304,7 @@ impl Restarter for Never {
     }
 
     /// Returns 0, but `should_restart` will always be false, so this value is not
-    /// practically used to countdown to a restart.
+    /// practically used to count down to a restart.
     fn restarts_in(&self) -> usize {
         usize::MAX
     }
@@ -318,7 +343,7 @@ pub struct Linear<const N: usize> {
 
 impl<const N: usize> Restarter for Linear<N> {
     /// Creates a new `Linear` restarter.
-    /// `restarts_in` is initialized to 0, meaning it will restart on the first call to `should_restart()`.
+    /// `restarts_in` is initialised to 0, meaning it will restart on the first call to `should_restart()`.
     /// The first interval after the initial restart will be `N`, the next `2N`, then `3N`, and so on.
     fn new() -> Self {
         assert!(N > 0, "Linear increment N must be positive.");

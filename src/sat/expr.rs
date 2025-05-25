@@ -7,7 +7,7 @@
 //!
 //! Furthermore, it implements several logical transformation functions:
 //! - `demorgans_laws`: Applies De Morgan's laws to push negations inwards.
-//! - `distributive_laws`: Applies distributive laws (e.g., AND over OR) to transform
+//! - `distributive_laws`: Applies distributive laws (e.g. AND over OR) to transform
 //!   expressions towards a conjunctive or disjunctive normal form.
 //! - `apply_laws`: A higher-level function that repeatedly applies De Morgan's and
 //!   distributive laws until the expression stabilizes, aiming to convert it into
@@ -26,9 +26,6 @@ use crate::sat::literal::Variable;
 /// - An `And(Box<Expr>, Box<Expr>)`: The logical conjunction of two expressions.
 /// - An `Or(Box<Expr>, Box<Expr>)`: The logical disjunction of two expressions.
 /// - A `Val(bool)`: A constant boolean value (`true` or `false`).
-///
-/// `Box<Expr>` is used for recursive variants (`Not`, `And`, `Or`) to avoid
-/// infinitely sized types.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Expr {
     /// A propositional variable, identified by `Variable`.
@@ -168,10 +165,13 @@ impl Expr {
             return Self::Val(true);
         }
         let mut iter = expressions.iter();
-        let first = iter.next().unwrap().clone();
-        iter.fold(first, |acc, x| {
-            Self::And(Box::new(acc), Box::new(x.clone()))
-        })
+        // SAFETY: We check that it's not empty above, so `next()` will always return Some.
+        unsafe {
+            let first = iter.next().unwrap_unchecked().clone();
+            iter.fold(first, |acc, x| {
+                Self::And(Box::new(acc), Box::new(x.clone()))
+            })
+        }
     }
 }
 
@@ -251,10 +251,6 @@ pub fn demorgans_laws(expr: &Expr) -> Expr {
 /// This function aims to transform expressions towards a disjunctive normal form (DNF) if applied
 /// to distribute AND over OR.
 ///
-/// The current implementation focuses on distributing AND over OR:
-/// - `e1 AND (e21 OR e22)` becomes `(e1 AND e21) OR (e1 AND e22)`.
-/// - `(e11 OR e12) AND e2` becomes `(e11 AND e2) OR (e12 AND e2)`.
-///
 /// It recursively applies these transformations.
 ///
 /// # Arguments
@@ -269,38 +265,31 @@ pub fn demorgans_laws(expr: &Expr) -> Expr {
 #[must_use]
 pub fn distributive_laws(expr: &Expr) -> Expr {
     let current_expr = expr.clone();
-    match current_expr {
-        Expr::And(e1_boxed, e2_boxed) => {
-            let e1_dist = distributive_laws(&e1_boxed);
-            let e2_dist = distributive_laws(&e2_boxed);
 
-            match (e1_dist.clone(), e2_dist.clone()) {
-                (Expr::Or(e11, e12), _) => Expr::Or(
-                    Box::new(distributive_laws(&Expr::And(
-                        e11,
-                        Box::new(e2_dist.clone()),
-                    ))),
-                    Box::new(distributive_laws(&Expr::And(e12, Box::new(e2_dist)))),
+    match current_expr {
+        Expr::Or(e1_boxed, e2_boxed) => {
+            let e1_cnf = distributive_laws(&e1_boxed);
+            let e2_cnf = distributive_laws(&e2_boxed);
+
+            match (e1_cnf.clone(), e2_cnf.clone()) {
+                (Expr::And(e11, e12), _) => Expr::And(
+                    Box::new(distributive_laws(&Expr::Or(e11, Box::new(e2_cnf.clone())))),
+                    Box::new(distributive_laws(&Expr::Or(e12, Box::new(e2_cnf)))),
                 ),
-                (_, Expr::Or(e21, e22)) => Expr::Or(
-                    Box::new(distributive_laws(&Expr::And(
-                        Box::new(e1_dist.clone()),
-                        e21,
-                    ))),
-                    Box::new(distributive_laws(&Expr::And(Box::new(e1_dist), e22))),
+                (_, Expr::And(e21, e22)) => Expr::And(
+                    Box::new(distributive_laws(&Expr::Or(Box::new(e1_cnf.clone()), e21))),
+                    Box::new(distributive_laws(&Expr::Or(Box::new(e1_cnf), e22))),
                 ),
-                _ => Expr::And(Box::new(e1_dist), Box::new(e2_dist)),
+                _ => Expr::Or(Box::new(e1_cnf), Box::new(e2_cnf)),
             }
         }
-        Expr::Or(e1_boxed, e2_boxed) => Expr::Or(
+        Expr::And(e1_boxed, e2_boxed) => Expr::And(
             Box::new(distributive_laws(&e1_boxed)),
             Box::new(distributive_laws(&e2_boxed)),
         ),
+        Expr::Not(inner) => Expr::Not(Box::new(distributive_laws(inner.as_ref()))),
         Expr::Val(b) => Expr::Val(b),
         Expr::Var(i) => Expr::Var(i),
-        Expr::Not(inner_expr_boxed) => {
-            Expr::Not(Box::new(distributive_laws(inner_expr_boxed.as_ref())))
-        }
     }
 }
 
@@ -309,10 +298,9 @@ pub fn distributive_laws(expr: &Expr) -> Expr {
 ///
 /// This is a common step in converting an arbitrary boolean expression into a
 /// standard form, often as a preliminary step before full CNF or DNF conversion.
-/// The goal is typically to achieve Negation Normal Form (NNF) via `demorgans_laws`,
-/// and then apply `distributive_laws` to move towards a sum-of-products (DNF) or
-/// product-of-sums (CNF like) structure. The current `distributive_laws` primarily
-/// creates DNF-like structures (ORs of ANDs).
+/// The goal is to achieve Negation Normal Form (NNF) via `demorgans_laws`,
+/// and then apply `distributive_laws` to move towards a
+/// product-of-sums (CNF like) structure.
 ///
 /// # Arguments
 ///
@@ -391,14 +379,14 @@ mod tests {
     #[test]
     fn test_distributive_laws_a_and_or_b_c() {
         let expr = and(or(var(1), var(2)), var(3));
-        let expected = or(and(var(1), var(3)), and(var(2), var(3)));
+        let expected = and(or(var(1), var(2)), var(3));
         assert_eq!(distributive_laws(&expr), expected);
     }
 
     #[test]
     fn test_distributive_laws_or_a_b_and_c() {
         let expr = and(or(var(1), var(2)), var(3));
-        let expected = or(and(var(1), var(3)), and(var(2), var(3)));
+        let expected = and(or(var(1), var(2)), var(3));
         assert_eq!(distributive_laws(&expr), expected);
     }
 
@@ -414,28 +402,15 @@ mod tests {
     #[test]
     fn test_distributive_laws_handles_not_nnf() {
         let expr = and(not(var(1)), or(var(2), var(3)));
-        let expected = or(and(not(var(1)), var(2)), and(not(var(1)), var(3)));
+        let expected = and(not(var(1)), or(var(2), var(3)));
         assert_eq!(distributive_laws(&expr), expected);
-    }
-
-    #[test]
-    fn test_apply_laws_simple_distribution() {
-        let expr = and(or(var(1), var(2)), var(3));
-        let expected = or(and(var(1), var(3)), and(var(2), var(3)));
-        assert_eq!(apply_laws(&expr), expected);
     }
 
     #[test]
     fn test_apply_laws_with_demorgans() {
         let expr = and(not(and(var(1), var(2))), var(3));
-        let expected = or(and(not(var(1)), var(3)), and(not(var(2)), var(3)));
+        let expected = and(or(not(var(1)), not(var(2))), var(3));
         assert_eq!(apply_laws(&expr), expected);
-    }
-
-    #[test]
-    fn test_apply_laws_stabilization() {
-        let expr = or(and(var(1), var(3)), and(var(2), var(3)));
-        assert_eq!(apply_laws(&expr), expr.clone());
     }
 
     #[test]

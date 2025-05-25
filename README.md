@@ -2,8 +2,6 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/YOUR_USERNAME/YOUR_REPONAME/rust.yml?branch=main)](https://github.com/YOUR_USERNAME/YOUR_REPONAME/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<!-- Replace YOUR_USERNAME/YOUR_REPONAME above -->
-<!-- Add other badges if applicable, e.g., crates.io -->
 
 SATSolver is a command-line application written in Rust that implements a SAT (Boolean Satisfiability) solver based on the CDCL (Conflict-Driven Clause Learning) algorithm. It's designed to be configurable and includes modules for solving standard CNF (Conjunctive Normal Form) problems as well as specific applications like Sudoku puzzles by reducing them to SAT.
 
@@ -21,10 +19,10 @@ SATSolver is a command-line application written in Rust that implements a SAT (B
 *   **Configurable Solver Components:** Uses a trait-based system (`SolverConfig`) allowing different implementations for:
     *   Literal Representation (`Literal`)
     *   Assignment Tracking (`Assignment`)
-    *   Variable Selection Heuristics (`VariableSelector`, e.g., VSIDS)
-    *   Unit Propagation (`Propagator`, e.g., Watched Literals)
-    *   Restart Strategies (`Restarter`, e.g., Luby sequence)
-    *   Clause Management (`ClauseManager`, e.g., LBD-based)
+    *   Variable Selection Heuristics (`VariableSelector`, e.g. VSIDS)
+    *   Unit Propagation (`Propagator`, e.g. Watched Literals)
+    *   Restart Strategies (`Restarter`, e.g. Luby sequence)
+    *   Clause Management (`ClauseManager`, e.g. LBD-based)
 *   **Performance Statistics:** Reports detailed statistics like conflicts, decisions, propagations, restarts, timing, and memory usage.
 *   **Solution Verification:** Includes an option to verify the correctness of found solutions.
 *   **Memory Management:** Uses `tikv-jemallocator` for potentially better memory allocation performance and reporting accurate memory statistics.
@@ -126,7 +124,7 @@ These options can be used with most commands:
 The solver's behavior is determined by the components defined in a `SolverConfig` implementation. The `DefaultConfig` uses:
 
 *   `Literal`: `PackedLiteral` (an efficient representation for literals)
-*   `LiteralStorage`: `SmallVec<[PackedLiteral; 8]>` (optimizes storage for small clauses)
+*   `LiteralStorage`: `SmallVec<[PackedLiteral; 8]>` (optimises storage for small clauses)
 *   `Assignment`: `VecAssignment` (standard vector-based assignment tracking)
 *   `VariableSelector`: `Vsids` (Variable State Independent Decaying Sum heuristic)
 *   `Propagator`: `WatchedLiterals` (efficient unit propagation)
@@ -182,7 +180,7 @@ Upon completion, the solver will output:
 
 1.  **(Optional)** Debug information if `-d` is enabled.
 2.  Parsing information (for Sudoku/Nonogram).
-3.  Solver progress/status (e.g., "Solving: <filename>").
+3.  Solver progress/status (e.g. "Solving: <filename>").
 4.  **(Optional)** Verification result if `--verify` is enabled.
 5.  **(Optional)** Statistics if `--stats` is enabled (see below).
 6.  **(Optional)** The solution assignment (list of true literals) if `-p` is enabled and the problem is SAT.

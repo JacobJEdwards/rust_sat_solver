@@ -8,12 +8,10 @@
 //! The format typically includes:
 //! - Comment lines starting with 'c'.
 //! - A problem line starting with 'p cnf <`num_variables`> <`num_clauses`>'.
-//!   (Note: This parser currently ignores the problem line's variable/clause counts
-//!   and derives them from the actual clauses found.)
 //! - Clause lines, where each line represents a clause. Literals are represented
 //!   by integers (positive for the variable, negative for its negation).
 //!   Each clause line is terminated by a '0'.
-//! - An optional '%' line to indicate end-of-data (often used in competitions).
+//! - An optional '%' line to indicate end-of-data (used in competition data).
 //!
 //! This parser focuses on extracting the clause data.
 
@@ -33,14 +31,14 @@ use std::io::{self, BufRead};
 ///
 /// # Type Parameters
 ///
-/// * `R`: A type that implements `BufRead` (e.g., `io::BufReader<File>`).
+/// * `R`: A type that implements `BufRead` (e.g. `io::BufReader<File>`).
 /// * `L`: The `Literal` type to be used in the resulting `Cnf`.
 /// * `S`: The `LiteralStorage` type for clauses in the resulting `Cnf`.
 ///
 /// # Panics
 ///
-/// - If reading a line from the `reader` fails (e.g., I/O error, invalid UTF-8).
-/// - If parsing a literal string (e.g., "1", "-2") into an `i32` fails. This implies
+/// - If reading a line from the `reader` fails (e.g. I/O error, invalid UTF-8).
+/// - If parsing a literal string (e.g. "1", "-2") into an `i32` fails. This implies
 ///   a malformed DIMACS file if non-integer tokens appear where literals are expected.
 ///
 /// # Returns
@@ -65,20 +63,15 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
                         s.parse::<i32>()
                             .unwrap_or_else(|e| panic!("Failed to parse literal '{s}' as i32: {e}"))
                     })
-                    .filter(|&p| p != 0) // Filter out the terminating '0' of DIMACS clauses.
-                    .collect_vec(); // Using itertools::Itertools for collect_vec
+                    .filter(|&p| p != 0)
+                    .collect_vec();
 
                 if !clause_literals.is_empty() {
                     clauses_dimacs.push(clause_literals);
                 }
-                // If clause_literals is empty after filtering (e.g. line was just "0"),
-                // it represents an empty clause, which implies immediate unsatisfiability.
-                // Cnf::new handles Vec<Vec<i32>> where an inner Vec<i32> can be empty.
             }
         }
     }
-    // `Cnf::new` takes an iterator of iterators of i32s.
-    // `clauses_dimacs` is `Vec<Vec<i32>>`.
     Cnf::new(clauses_dimacs)
 }
 
@@ -98,8 +91,8 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
 ///
 /// # Errors
 ///
-/// Returns `io::Result::Err` if the file cannot be opened or read (e.g., path does not exist,
-/// permissions error). Panics from `parse_dimacs` (e.g., malformed content) will propagate.
+/// Returns `io::Result::Err` if the file cannot be opened or read (e.g. path does not exist,
+/// permissions error). Panics from `parse_dimacs` (e.g. malformed content) will propagate.
 ///
 /// # Returns
 ///
@@ -119,16 +112,16 @@ pub fn parse_file<T: Literal, S: LiteralStorage<T>>(file_path: &str) -> io::Resu
 /// # Errors
 ///
 /// Returns `io::Result::Err` if there's an issue reading the directory or its entries
-/// (e.g., path does not exist, permissions error).
+/// (e.g. path does not exist, permissions error).
 ///
 /// # Panics
 ///
-/// - If `entry.path().to_str()` returns `None` (i.e., the path is not valid UTF-8).
-///   This is uncommon on most systems but possible.
+/// - If `entry.path().to_str()` returns `None` (i.e. the path is not valid UTF-8).
 ///
 /// # Returns
 ///
 /// `io::Result::Ok(Vec<String>)` containing the full paths of all files found.
+#[allow(dead_code)]
 pub fn get_all_files(dir_path: &str) -> io::Result<Vec<String>> {
     let mut files_found = Vec::new();
 

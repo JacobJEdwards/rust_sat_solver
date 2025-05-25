@@ -2,9 +2,9 @@
 //! Defines how literals are stored within a clause.
 //!
 //! This module introduces the `LiteralStorage` trait, which abstracts the underlying
-//! data structure used to store a collection of literals (e.g., `Vec<L>` or
+//! data structure used to store a collection of literals (e.g. `Vec<L>` or
 //! `SmallVec<[L; N]>`). This allows clauses to be generic over their literal
-//! storage mechanism, enabling optimizations like `SmallVec` for small clauses
+//! storage mechanism, enabling optimisations like `SmallVec` for small clauses
 //! while still supporting heap-allocated `Vec` for larger ones.
 //!
 //! The trait provides a common interface for operations like adding, removing,
@@ -40,15 +40,15 @@ use std::slice::{Iter, IterMut};
 /// - `Debug`: For debugging purposes.
 /// - `AsRef<[L]>`: To get a slice view of the stored literals.
 pub trait LiteralStorage<L: Literal>:
-Index<usize, Output = L>
-+ FromIterator<L>
-+ Clone
-+ From<Vec<L>> // Allows S::from(vec![...])
-+ Default
-+ IndexMut<usize, Output = L>
-+ Extend<L>
-+ Debug
-+ AsRef<[L]> // Allows .as_ref() to get a slice &[L]
+    Index<usize, Output = L>
+    + FromIterator<L>
+    + Clone
+    + From<Vec<L>>
+    + Default
+    + IndexMut<usize, Output = L>
+    + Extend<L>
+    + Debug
+    + AsRef<[L]>
 {
     /// Appends a literal to the end of the storage.
     ///
@@ -104,7 +104,6 @@ Index<usize, Output = L>
     /// # Safety
     ///
     /// Calling this method with an out-of-bounds `index` is undefined behavior.
-    /// The caller must ensure that `index` is less than `self.len()`.
     unsafe fn get_unchecked(&self, index: usize) -> &L;
 
     /// Returns a mutable reference to the literal at `index` without bounds checking.
@@ -116,7 +115,6 @@ Index<usize, Output = L>
     /// # Safety
     ///
     /// Calling this method with an out-of-bounds `index` is undefined behavior.
-    /// The caller must ensure that `index` is less than `self.len()`.
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L;
 
     /// Removes the literal at `index` by swapping it with the last literal and then popping.
@@ -132,17 +130,7 @@ Index<usize, Output = L>
     ///
     /// Panics if `index` is out of bounds.
     fn swap_remove(&mut self, index: usize) -> L {
-        // Default implementation provided by the trait.
-        // Implementors can override this if a more specialized version exists for their type.
-        let last_idx = self.len().saturating_sub(1); // Avoid panic if len is 0
-        if self.is_empty() || index > last_idx {
-            // This behavior for out-of-bounds index might need to align with Vec/SmallVec's panic.
-            // Vec::swap_remove panics if index is out of bounds.
-            // To match that, we should ensure len() > 0 and index < len().
-            // The current `remove` call will panic if last_idx is invalid after swap.
-            // Let's ensure index is valid before swap, matching Vec::swap_remove.
-            assert!(index < self.len(), "swap_remove: index out of bounds");
-        }
+        let last_idx = self.len().saturating_sub(1);
         self.swap(index, last_idx);
         self.remove(last_idx)
     }
@@ -202,7 +190,7 @@ impl<L: Literal> LiteralStorage<L> for Vec<L> {
 ///
 /// `SmallVec` is a vector-like collection that stores a small number (`N`) of elements
 /// on the stack and spills to the heap if more elements are added. This can be an
-/// optimization for clauses, as many clauses (especially binary or ternary) are small.
+/// optimisation for clauses, as many clauses are small.
 ///
 /// # Type Parameters
 ///
@@ -238,7 +226,6 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
     }
 
     fn swap(&mut self, a: usize, b: usize) {
-        // `SmallVec` derefs to slice, so `swap` is available.
         self.as_mut_slice().swap(a, b);
     }
 
@@ -251,7 +238,6 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
     }
 
     fn swap_remove(&mut self, index: usize) -> L {
-        // `SmallVec::swap_remove`
         Self::swap_remove(self, index)
     }
 }
@@ -276,6 +262,7 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
 /// # Returns
 ///
 /// A `Vec<U>` containing the converted literals.
+#[allow(dead_code)]
 pub fn convert<L: Literal, U: Literal, S: LiteralStorage<U>, T: LiteralStorage<L>>(
     literals: &T,
 ) -> Vec<U> {
@@ -287,6 +274,7 @@ mod tests {
     use super::*;
     use crate::sat::literal::{PackedLiteral, StructLiteral};
 
+    #[allow(clippy::cognitive_complexity)]
     fn test_literal_storage_behavior<S: LiteralStorage<PackedLiteral>>(mut storage: S) {
         assert!(storage.is_empty());
         assert_eq!(storage.len(), 0);

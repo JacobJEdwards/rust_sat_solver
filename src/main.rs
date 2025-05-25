@@ -1,8 +1,8 @@
-//! # SATSolver
+//! # sat_solver
 //!
-//! `SATSolver` is a configurable command-line SAT (Satisfiability) solver.
+//! `sat_solver` is a configurable command-line SAT (Satisfiability) solver.
 //! It can parse and solve problems in CNF (Conjunctive Normal Form) DIMACS format,
-//! CNF provided as plain text, and also includes specialized solvers for Sudoku
+//! CNF provided as plain text, and also includes specialised solvers for Sudoku
 //! and Nonogram puzzles by converting them to CNF.
 //!
 //! The solver supports two main algorithms:
@@ -35,7 +35,7 @@
 //! ### General Syntax
 //!
 //! ```sh
-//! satsolver [GLOBAL_OPTIONS] [SUBCOMMAND]
+//! sat_solver [GLOBAL_OPTIONS] [SUBCOMMAND]
 //! ```
 //!
 //! ### Global Argument
@@ -44,33 +44,29 @@
 //!     a path to a DIMACS .cnf file to be solved.
 //!
 //!     ```sh
-//!     satsolver <path_to_cnf_file>
+//!     sat_solver <path_to_cnf_file>
 //!     ```
 //!
 //! ### Subcommands
 //!
 //! 1.  **`file`**: Solve a CNF file in DIMACS format.
 //!     ```sh
-//!     satsolver file --path <path_to_cnf_file> [OPTIONS]
+//!     sat_solver file --path <path_to_cnf_file> [OPTIONS]
 //!     ```
 //!
 //! 2.  **`text`**: Solve a CNF formula provided as plain text.
 //!     ```sh
-//!     satsolver text --input "<cnf_string>" [OPTIONS]
+//!     sat_solver text --input "<cnf_string>" [OPTIONS]
 //!     # Example: satsolver text --input "1 -2 0\n2 3 0"
 //!     ```
 //!
 //! 3.  **`sudoku`**: Solve a Sudoku puzzle.
 //!     ```sh
-//!     satsolver sudoku --path <path_to_sudoku_file> [OPTIONS]
+//!     sat_solver sudoku --path <path_to_sudoku_file> [OPTIONS]
 //!     # Optionally export to DIMACS:
-//!     satsolver sudoku --path <path_to_sudoku_file> --export-dimacs [OPTIONS]
+//!     sat_solver sudoku --path <path_to_sudoku_file> --export-dimacs [OPTIONS]
 //!     ```
 //!
-//! 4.  **`nonogram`**: Solve a Nonogram puzzle.
-//!     ```sh
-//!     satsolver nonogram --path <path_to_nonogram_file> [OPTIONS]
-//!     ```
 //!
 //! ### Common Options (available for all subcommands and global file path)
 //!
@@ -86,24 +82,24 @@
 //!
 //! ```sh
 //! # Solve a DIMACS file using the default CDCL solver
-//! satsolver problem.cnf
+//! sat_solver problem.cnf
 //!
 //! # Solve a DIMACS file using DPLL and print debug info
-//! satsolver file --path problem.cnf --solver dpll --debug
+//! sat_solver file --path problem.cnf --solver dpll --debug
 //!
 //! # Solve a Sudoku puzzle and export its CNF representation
-//! satsolver sudoku --path puzzle.sudoku --export-dimacs
+//! sat_solver sudoku --path puzzle.sudoku --export-dimacs
 //!
 //! # Solve a Nonogram puzzle and print the solution
-//! satsolver nonogram --path puzzle.nonogram --print-solution
+//! sat_solver nonogram --path puzzle.nonogram --print-solution
 //!
 //! # Solve a CNF formula from text input
-//! satsolver text --input "1 2 0\n-1 0"
+//! sat_solver text --input "1 2 0\n-1 0"
 //! ```
 //!
 //! This file (`main.rs`) contains the main entry point, CLI parsing logic,
 //! and orchestrates the solving process based on user input.
-//! It uses modules `sat`, `sudoku`, and `nonogram` for specialized logic.
+//! It uses modules `sat`, `sudoku`, and `nonogram` for specialised logic.
 
 use crate::sat::cdcl::Cdcl;
 use crate::sat::cnf::Cnf;
@@ -115,8 +111,6 @@ use itertools::Itertools;
 use std::time::Duration;
 use tikv_jemalloc_ctl::{epoch, stats};
 
-// Modules for specific problem domains and SAT solver internals.
-// These are expected to be defined in other files (e.g., sat.rs, nonogram.rs, sudoku.rs).
 mod nonogram;
 mod sat;
 mod sudoku;
@@ -137,7 +131,7 @@ struct Cli {
     #[arg(global = true)]
     path: Option<String>,
 
-    /// Specifies the subcommand to execute (e.g., `file`, `text`, `sudoku`, `nonogram`).
+    /// Specifies the subcommand to execute (e.g. `file`, `text`, `sudoku`, `nonogram`).
     #[clap(subcommand)]
     command: Option<Commands>,
 
@@ -162,7 +156,7 @@ enum Commands {
 
     /// Solve a CNF formula provided as plain text.
     Text {
-        /// Literal CNF input as a string (e.g., "1 -2 0\n2 3 0").
+        /// Literal CNF input as a string (e.g. "1 -2 0\n2 3 0").
         /// Each line represents a clause, literals are space-separated, and 0 terminates a clause.
         #[arg(short, long)]
         input: String,
@@ -233,8 +227,8 @@ struct CommonOptions {
 fn main() {
     let cli = Cli::parse();
 
-    // Handle the case where a path is provided globally without a subcommand.
-    // This defaults to solving a DIMACS file.
+    // handle the case where a path is provided globally without a subcommand.
+    // this defaults to solving a DIMACS file.
     if let Some(path) = cli.path.clone() {
         if cli.command.is_none() {
             let time = std::time::Instant::now();
@@ -247,7 +241,6 @@ fn main() {
         }
     }
 
-    // Match on the specified subcommand.
     match cli.command {
         Some(Commands::File { path, common }) => {
             let time = std::time::Instant::now();
@@ -272,14 +265,12 @@ fn main() {
             export_dimacs,
         }) => {
             let time = std::time::Instant::now();
-            // Assumes `sudoku::solver::parse_sudoku_file` exists and parses a Sudoku puzzle.
             let sudoku = sudoku::solver::parse_sudoku_file(&path);
 
             match sudoku {
                 Ok(sudoku) => {
                     println!("Parsed Sudoku:\n{sudoku}");
 
-                    // Assumes `sudoku.to_cnf()` converts the puzzle to a CNF formula.
                     let cnf = sudoku.to_cnf();
 
                     if export_dimacs {
@@ -298,8 +289,6 @@ fn main() {
                     let (sol, elapsed, solver_stats) =
                         solve(cnf.clone(), common.debug, Some(&path), &common.solver);
 
-                    // Advance epoch for memory stats collection if using jemalloc.
-                    // This helps in getting more accurate memory stats related to the solving phase.
                     epoch::advance().unwrap();
                     let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
                     let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
@@ -324,7 +313,6 @@ fn main() {
                     }
 
                     if let Some(sol_values) = sol {
-                        // Assumes `sudoku.decode(&sol_values)` decodes the SAT solution back to a Sudoku grid.
                         let solution_grid = sudoku.decode(&sol_values);
                         println!("Solution: {solution_grid}");
                     } else {
@@ -338,13 +326,11 @@ fn main() {
         }
         Some(Commands::Nonogram { path, common }) => {
             let time = std::time::Instant::now();
-            // Assumes `nonogram::solver::parse_nonogram_file` exists.
             let nonogram = nonogram::solver::parse_nonogram_file(&path);
             match nonogram {
                 Ok(nonogram) => {
                     println!("Parsed Nonogram:\n{nonogram}");
 
-                    // Assumes `nonogram.to_cnf()` converts the puzzle to a CNF formula.
                     let cnf = nonogram.to_cnf();
 
                     let parse_time = time.elapsed();
@@ -375,10 +361,9 @@ fn main() {
                     }
 
                     if let Some(sol_values) = sol {
-                        // Assumes `nonogram.decode(&sol_values)` decodes the SAT solution.
                         let solution_grid = nonogram.decode(&sol_values);
                         for row in solution_grid.iter() {
-                            println!("{:?}", row); // Example: prints each row of the decoded Nonogram.
+                            println!("{:?}", row); 
                         }
                     } else {
                         println!("No solution found");
@@ -390,12 +375,10 @@ fn main() {
             }
         }
         None => {
-            // This case is reached if no subcommand was provided and `cli.path` was also None.
             if cli.path.is_none() {
                 eprintln!("No command provided. Use --help for more information.");
                 std::process::exit(1);
             }
-            // If `cli.path` was Some, it would have been handled by the first `if` block.
         }
     }
 }
@@ -425,7 +408,7 @@ fn verify_solution(cnf: Cnf, sol: &Option<Solutions>) {
 /// # Arguments
 /// * `cnf` - The CNF formula to solve.
 /// * `debug` - Boolean flag to enable debug printing.
-/// * `label` - An optional label for the problem (e.g., file path), used in debug output.
+/// * `label` - An optional label for the problem (e.g. file path), used in debug output.
 /// * `solver_name` - The name of the solver to use ("dpll" or "cdcl").
 ///
 /// # Returns
@@ -469,7 +452,6 @@ fn solve(
 /// # Returns
 /// See `solve` function return type.
 fn solve_cdcl(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionStats) {
-    // Advance epoch for jemalloc stats, helps isolate memory usage for this solving phase.
     epoch::advance().unwrap();
 
     let time = std::time::Instant::now();
@@ -520,24 +502,18 @@ fn solve_dpll(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionSt
 /// # Arguments
 /// * `cnf` - The CNF formula, typically parsed from a file or text.
 /// * `common` - `CommonOptions` providing solver configuration (debug, verify, stats, solver type).
-/// * `label` - An optional label for the problem (e.g., file path).
+/// * `label` - An optional label for the problem (e.g. file path).
 /// * `parse_time` - The time taken to parse the CNF input.
 fn solve_and_report(cnf: Cnf, common: CommonOptions, label: Option<&str>, parse_time: Duration) {
-    // Note: epoch::advance() is called inside solve_cdcl/solve_dpll before solving.
-    // This advance is for memory stats *after* solving.
     epoch::advance().unwrap();
 
     let (sol, elapsed, solver_stats) = solve(cnf.clone(), common.debug, label, &common.solver);
 
-    // Advance epoch again to ensure memory stats capture everything up to this point.
     epoch::advance().unwrap();
 
-    // Read memory statistics using tikv_jemalloc_ctl.
-    // These functions return byte counts.
     let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
     let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
 
-    // Convert bytes to MiB for reporting.
     let allocated_mib = allocated_bytes as f64 / (1024.0 * 1024.0);
     let resident_mib = resident_bytes as f64 / (1024.0 * 1024.0);
 
@@ -578,8 +554,8 @@ fn parse_textual_cnf(input: &str) -> Vec<Vec<i32>> {
         .map(|line| {
             line.split_whitespace()
                 .map(str::parse::<i32>)
-                .take_while(|res| *res != Ok(0)) // Clause ends with 0
-                .map(Result::unwrap) // Assumes valid integers before 0
+                .take_while(|res| *res != Ok(0))
+                .map(Result::unwrap)
                 .collect()
         })
         .collect_vec()
@@ -606,10 +582,7 @@ fn stat_line_with_rate(label: &str, value: usize, elapsed: f64) {
     } else {
         0.0
     };
-    println!(
-        "|  {:<20} {:>12} ({:>9.0}/sec)  |", // Adjusted formatting for rate
-        label, value, rate
-    );
+    println!("|  {:<20} {:>12} ({:>9.0}/sec)  |", label, value, rate);
 }
 
 /// Prints a summary of problem and search statistics.
@@ -629,8 +602,8 @@ fn print_stats(
     elapsed: Duration,
     cnf: &Cnf,
     s: &SolutionStats,
-    allocated: f64, // Assumed to be in MiB
-    resident: f64,  // Assumed to be in MiB
+    allocated: f64,
+    resident: f64,
     print_solution: bool,
     solutions: &Option<Solutions>,
 ) {
@@ -645,13 +618,13 @@ fn print_stats(
         } else {
             0
         },
-    ); // Max var ID is num_vars - 1
-    stat_line("Clauses (original)", cnf.non_learnt_idx); // Number of non-learnt clauses
-    stat_line("Literals (original)", cnf.lits.len()); // Total literals in original clauses
+    );
+    stat_line("Clauses (original)", cnf.non_learnt_idx);
+    stat_line("Literals (original)", cnf.lits.len()); 
 
     println!("========================[ Search Statistics ]========================");
     stat_line("Learnt clauses", s.learnt_clauses);
-    stat_line("Total clauses (incl. learnt)", cnf.clauses.len()); // cnf.clauses includes learnt ones if added there, or sum
+    stat_line("Total clauses (incl. learnt)", cnf.clauses.len());
     stat_line_with_rate("Conflicts", s.conflicts, elapsed_secs);
     stat_line_with_rate("Decisions", s.decisions, elapsed_secs);
     stat_line_with_rate("Propagations", s.propagations, elapsed_secs);
@@ -694,7 +667,6 @@ mod tests {
 
     #[test]
     fn test_parse_textual_cnf_empty_lines() {
-        // Empty lines (not starting with 'c' or 'p') result in empty clauses
         let input = "1 0\n\n-2 0";
         let expected = vec![vec![1], vec![], vec![-2]];
         assert_eq!(parse_textual_cnf(input), expected);
@@ -703,7 +675,7 @@ mod tests {
     #[test]
     fn test_parse_textual_cnf_empty_input() {
         let input = "";
-        let expected: Vec<Vec<i32>> = vec![]; // An empty line becomes an empty vec, but no lines means no vecs.
+        let expected: Vec<Vec<i32>> = vec![];
         assert_eq!(parse_textual_cnf(input), expected);
     }
 
@@ -723,36 +695,8 @@ mod tests {
 
     #[test]
     fn test_parse_textual_cnf_multiple_zeros_in_line() {
-        // `take_while` stops at the first Ok(0)
         let input = "1 2 0 3 4 0";
         let expected = vec![vec![1, 2]];
         assert_eq!(parse_textual_cnf(input), expected);
     }
-
-    // Note: Integration tests for CLI functionality would typically go in a separate `tests` directory
-    // and use crates like `assert_cmd`. Since this is a single file, only unit tests are added here.
-    // To add integration tests:
-    // 1. Create `tests/cli.rs`.
-    // 2. Use `std::process::Command` or `assert_cmd` to run the compiled binary.
-    // 3. Prepare sample input files (DIMACS, Sudoku, Nonogram) in `tests/fixtures/`.
-    // 4. Assert stdout, stderr, and exit codes.
-    // Example (conceptual, needs `assert_cmd` and files):
-    //
-    // #[test]
-    // fn test_cli_solve_dimacs_file() {
-    //     use assert_cmd::Command;
-    //     use std::fs;
-    //
-    //     // Create a dummy CNF file
-    //     let cnf_content = "p cnf 2 2\n1 2 0\n-1 0\n";
-    //     fs::write("tests/fixtures/sample_cli.cnf", cnf_content).unwrap();
-    //
-    //     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
-    //     cmd.arg("tests/fixtures/sample_cli.cnf");
-    //     cmd.assert()
-    //        .success()
-    //        .stdout(predicates::str::contains("SATISFIABLE"));
-    //
-    //     fs::remove_file("tests/fixtures/sample_cli.cnf").unwrap();
-    // }
 }

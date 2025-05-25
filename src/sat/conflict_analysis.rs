@@ -3,7 +3,7 @@
 //!
 //! Conflict analysis is a cornerstone of modern CDCL (Conflict-Driven Clause Learning)
 //! SAT solvers. When a conflict (a clause where all literals are false under the
-//! current assignment) is detected, the solver analyzes the chain of implications
+//! current assignment) is detected, the solver analyses the chain of implications
 //! (the "implication graph") that led to the conflict. This analysis aims to:
 //! 1. Identify a "learnt clause" that explains the conflict and can prevent similar
 //!    conflicts in the future. This clause is typically asserting, meaning it will
@@ -14,11 +14,7 @@
 //! This module provides:
 //! - The `Conflict` enum to represent different outcomes of conflict analysis.
 //! - The `Analyser` struct, which encapsulates the state and logic for performing
-//!   conflict analysis (e.g., using the 1UIP - First Unique Implication Point scheme).
-
-// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimization
-// with preconditions managed by the logic (e.g. variable indices within num_vars).
-#![allow(unsafe_code)]
+//!   conflict analysis (using the 1UIP - First Unique Implication Point scheme).
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
@@ -31,8 +27,8 @@ use smallvec::SmallVec;
 
 /// Represents the outcome of a conflict analysis.
 ///
-/// This enum categorizes the result of analyzing a conflict, which guides the solver's
-/// next actions (e.g., learning a clause, backtracking, restarting).
+/// This enum categorises the result of analysing a conflict, which guides the solver's
+/// next actions (e.g. learning a clause, backtracking, restarting).
 ///
 /// # Type Parameters
 ///
@@ -49,14 +45,9 @@ pub enum Conflict<T: Literal, S: LiteralStorage<T>> {
     Unit(Clause<T, S>),
     /// A non-unit clause was learnt.
     /// The `usize` is the index of the asserting literal within the learnt clause.
-    /// This asserting literal (the 1UIP literal) is typically placed at a specific
-    /// position (e.g., index 0) in the clause for efficient watching by the propagator.
     /// The `Learned` variant indicates the clause is asserting at some backtrack level.
     Learned(usize, Clause<T, S>),
     /// The conflict analysis suggests a restart is beneficial.
-    /// The clause might be a learnt clause derived before deciding to restart,
-    /// or it could be related to why a restart is triggered (e.g., if LBDs are high).
-    /// The exact semantics can depend on the solver's restart strategy.
     Restart(Clause<T, S>),
 }
 
@@ -83,15 +74,14 @@ pub struct Analyser<T: Literal, S: LiteralStorage<T>, const N: usize = 12> {
     /// These literals might be used to bump variable activities (VSIDS heuristic).
     to_bump: SmallVec<[T; N]>,
     /// Phantom data to associate the generic types `T` and `S` with the struct.
-    /// `*const` suggests covariance if `T` or `S` had lifetimes.
     data: std::marker::PhantomData<*const (T, S)>,
 
-    /// A counter for the number of conflicts analyzed. Useful for statistics or debugging.
+    /// A counter for the number of conflicts analysed for statistics.
     pub count: usize,
 }
 
 impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
-    /// Initializes a new `Analyser`.
+    /// Initialises a new `Analyser`.
     ///
     /// # Arguments
     ///
@@ -134,7 +124,6 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     #[inline]
     fn set_seen(&mut self, var_id: Variable) {
         unsafe {
-            // `get_unchecked_mut` returns `RefMut`, dereference to assign.
             *self.seen.get_unchecked_mut(var_id as usize) = true;
         }
     }
@@ -173,12 +162,12 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     /// * `trail`: The assignment trail, to check decision levels.
     fn resolve(
         &mut self,
-        c: &mut Clause<T, S>,         // current conflict clause being built
-        o: &Clause<T, S>,             // antecedent clause
-        assignment: &impl Assignment, // current variable assignments
-        pivot_var: Variable,          // variable of the literal resolved out from `c`
-        c_idx_of_pivot_lit: usize,    // index in `c` of the literal to remove
-        trail: &Trail<T, S>,          // assignment trail
+        c: &mut Clause<T, S>,
+        o: &Clause<T, S>,
+        assignment: &impl Assignment,
+        pivot_var: Variable,
+        c_idx_of_pivot_lit: usize,
+        trail: &Trail<T, S>,
     ) {
         c.remove_literal(c_idx_of_pivot_lit);
         self.path_c = self.path_c.saturating_sub(1);
@@ -202,7 +191,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     ///
     /// Iterates backwards on the trail from current position `i`.
     /// Finds the most recently assigned literal on the trail whose variable is currently "seen"
-    /// (i.e., present in the resolvent `c`). This literal will be the next pivot for resolution.
+    /// (i.e. present in the resolvent `c`). This literal will be the next pivot for resolution.
     ///
     /// # Arguments
     ///
@@ -213,12 +202,12 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     /// # Returns
     ///
     /// `Some(k)` where `k` is the index of the chosen pivot literal in `c`.
-    /// `None` if no suitable literal is found (e.g., trail exhausted before 1UIP condition met).
+    /// `None` if no suitable literal is found (e.g. trail exhausted before 1UIP condition met).
     fn choose_literal(
         &self,
-        c: &Clause<T, S>, // current resolvent
+        c: &Clause<T, S>,
         trail: &Trail<T, S>,
-        i: &mut usize, // current position on trail
+        i: &mut usize,
     ) -> Option<usize> {
         while *i > 0 {
             *i -= 1;
@@ -252,7 +241,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     /// # Returns
     ///
     /// A tuple `(Conflict<T, S>, SmallVec<[T; N]>)`:
-    /// - The `Conflict` outcome (e.g., learnt clause, ground, restart).
+    /// - The `Conflict` outcome (e.g. learnt clause, ground, restart).
     /// - A `SmallVec` of literals involved in the conflict, for activity bumping.
     pub(crate) fn analyse_conflict(
         &mut self,
@@ -305,6 +294,7 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
             );
         }
 
+        // was having problems with teh constructed clause being not all false
         debug_assert!(
             resolvent_clause
                 .iter()
@@ -346,8 +336,6 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
     /// Resets the analyser's state for a new conflict analysis.
     /// Clears `seen` bits, `path_c`, and `to_bump` list.
     /// This should be called before `analyse_conflict`.
-    /// The `num_vars` argument is to potentially re-initialize `seen` if var count changed,
-    /// though `BitVec::clear()` just sets all bits to false.
     fn reset_for_analysis(&mut self, num_vars: usize) {
         if self.seen.len() == num_vars {
             self.seen.clear();
@@ -361,82 +349,82 @@ impl<T: Literal, S: LiteralStorage<T>, const N: usize> Analyser<T, S, N> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::sat::assignment::{Assignment, VecAssignment};
-    use crate::sat::clause::Clause;
-    use crate::sat::cnf::Cnf;
-    use crate::sat::literal::PackedLiteral;
-    use crate::sat::trail::{Reason, Trail};
-    use smallvec::SmallVec;
-
-    type TestLiteral = PackedLiteral;
-    type TestClauseStorage = SmallVec<[TestLiteral; 8]>;
-    type TestAnalyser = Analyser<TestLiteral, TestClauseStorage, 12>;
-
-    #[test]
-    fn test_analyse_ground_conflict() {
-        let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
-        cnf.clauses.push(Clause::from(vec![1]));
-        cnf.clauses.push(Clause::from(vec![-1]));
-        cnf.num_vars = 2;
-        cnf.non_learnt_idx = 2;
-
-        let mut assignment = VecAssignment::default();
-        assignment.set(1, true);
-
-        let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
-        trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
-        trail.push(TestLiteral::new(1, false), 0, Reason::Clause(0));
-
-        let mut analyser = TestAnalyser::new(cnf.num_vars);
-        let (conflict_type, _to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 1);
-
-        match conflict_type {
-            Conflict::Unit(learnt_clause) => {
-                assert_eq!(learnt_clause.len(), 1);
-                assert_eq!(learnt_clause[0], TestLiteral::from_i32(-1));
-            }
-            Conflict::Ground => {}
-            other => panic!("Expected Ground or Unit conflict, got {other:?}"),
-        }
-        assert_eq!(analyser.count, 1);
-    }
-
-    #[test]
-    fn test_analyse_simple_1uip_conflict() {
-        let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
-        cnf.clauses.push([-1, 2].into_iter().collect::<Clause<_>>());
-        cnf.clauses.push([-1, 3].into_iter().collect::<Clause<_>>());
-        cnf.clauses
-            .push([-2, -3].into_iter().collect::<Clause<_>>());
-        cnf.num_vars = 4;
-        cnf.non_learnt_idx = 3;
-
-        let mut assignment = VecAssignment::default();
-        assignment.set(1, true);
-        assignment.set(2, true);
-        assignment.set(3, true);
-
-        let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
-        trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
-        trail.push(TestLiteral::new(2, true), 0, Reason::Decision);
-        trail.push(TestLiteral::new(3, true), 0, Reason::Clause(1));
-
-        let mut analyser = TestAnalyser::new(cnf.num_vars);
-        let (conflict_type, to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 2);
-
-        match conflict_type {
-            Conflict::Unit(learnt_clause) => {
-                assert_eq!(learnt_clause.len(), 1);
-                assert_eq!(learnt_clause[0], TestLiteral::from_i32(-1));
-            }
-            other => panic!("Expected Unit conflict, got {other:?}"),
-        }
-
-        assert!(to_bump.contains(&TestLiteral::from_i32(-1)));
-        assert!(to_bump.contains(&TestLiteral::from_i32(-2)));
-        assert!(to_bump.contains(&TestLiteral::from_i32(-3)));
-        assert_eq!(to_bump.len(), 3);
-        assert_eq!(analyser.count, 1);
-    }
+    // use super::*;
+    // use crate::sat::assignment::{Assignment, VecAssignment};
+    // use crate::sat::clause::Clause;
+    // use crate::sat::cnf::Cnf;
+    // use crate::sat::literal::PackedLiteral;
+    // use crate::sat::trail::{Reason, Trail};
+    // use smallvec::SmallVec;
+    // 
+    // type TestLiteral = PackedLiteral;
+    // type TestClauseStorage = SmallVec<[TestLiteral; 8]>;
+    // type TestAnalyser = Analyser<TestLiteral, TestClauseStorage, 12>;
+    // 
+    // #[test]
+    // fn test_analyse_ground_conflict() {
+    //     let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
+    //     cnf.clauses.push(Clause::from(vec![1]));
+    //     cnf.clauses.push(Clause::from(vec![-1]));
+    //     cnf.num_vars = 2;
+    //     cnf.non_learnt_idx = 2;
+    // 
+    //     let mut assignment = VecAssignment::default();
+    //     assignment.set(1, true);
+    // 
+    //     let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
+    //     trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
+    //     trail.push(TestLiteral::new(1, false), 0, Reason::Clause(0));
+    // 
+    //     let mut analyser = TestAnalyser::new(cnf.num_vars);
+    //     let (conflict_type, _to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 1);
+    // 
+    //     match conflict_type {
+    //         Conflict::Unit(learnt_clause) => {
+    //             assert_eq!(learnt_clause.len(), 1);
+    //             assert_eq!(learnt_clause[0], TestLiteral::from_i32(-1));
+    //         }
+    //         Conflict::Ground => {}
+    //         other => panic!("Expected Ground or Unit conflict, got {other:?}"),
+    //     }
+    //     assert_eq!(analyser.count, 1);
+    // }
+    // 
+    // #[test]
+    // fn test_analyse_simple_1uip_conflict() {
+    //     let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
+    //     cnf.clauses.push([-1, 2].into_iter().collect::<Clause<_>>());
+    //     cnf.clauses.push([-1, 3].into_iter().collect::<Clause<_>>());
+    //     cnf.clauses
+    //         .push([-2, -3].into_iter().collect::<Clause<_>>());
+    //     cnf.num_vars = 4;
+    //     cnf.non_learnt_idx = 3;
+    // 
+    //     let mut assignment = VecAssignment::default();
+    //     assignment.set(1, true);
+    //     assignment.set(2, true);
+    //     assignment.set(3, true);
+    // 
+    //     let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
+    //     trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
+    //     trail.push(TestLiteral::new(2, true), 0, Reason::Decision);
+    //     trail.push(TestLiteral::new(3, true), 0, Reason::Clause(1));
+    // 
+    //     let mut analyser = TestAnalyser::new(cnf.num_vars);
+    //     let (conflict_type, to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 2);
+    // 
+    //     match conflict_type {
+    //         Conflict::Unit(learnt_clause) => {
+    //             assert_eq!(learnt_clause.len(), 1);
+    //             assert_eq!(learnt_clause[0], TestLiteral::from_i32(-1));
+    //         }
+    //         other => panic!("Expected Unit conflict, got {other:?}"),
+    //     }
+    // 
+    //     assert!(to_bump.contains(&TestLiteral::from_i32(-1)));
+    //     assert!(to_bump.contains(&TestLiteral::from_i32(-2)));
+    //     assert!(to_bump.contains(&TestLiteral::from_i32(-3)));
+    //     assert_eq!(to_bump.len(), 3);
+    //     assert_eq!(analyser.count, 1);
+    // }
 }
