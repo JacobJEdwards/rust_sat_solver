@@ -11,10 +11,6 @@
 //! - Utilities for interacting with the `Cnf` formula, such as adding clauses, iterating,
 //!   and verifying solutions.
 //! - Conversion functions to and from a more general `Expr` (expression tree) representation.
-//!
-// Hiding unsafety warnings for `get_unchecked` as it's an intentional optimisation
-// with preconditions managed by the logic.
-// Allowing specific casts that are understood within the context of SAT solver logic.
 #![allow(unsafe_code, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 use super::clause::Clause;

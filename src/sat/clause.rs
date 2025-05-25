@@ -48,7 +48,7 @@ pub struct Clause<L: Literal = PackedLiteral, S: LiteralStorage<L> = SmallVec<[L
     /// Activity score of the clause, used in clause deletion heuristics (e.g. VSIDS-like).
     /// Higher activity suggests the clause has been more recently involved in conflicts or propagations.
     pub activity: OrderedFloat<f64>,
-    /// `PhantomData` to ensure proper variance and handling of the generic type `L`.
+    /// `PhantomData` to ensure handling of the generic type `L`.
     data: PhantomData<*const L>,
 }
 

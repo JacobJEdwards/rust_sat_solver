@@ -2,7 +2,6 @@ use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use crate::sat::solver::Solutions;
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroI32;
@@ -307,53 +306,40 @@ fn generate_recursive(
             continue;
         }
 
-        // Check separator after block
         if end_pos < size && current_pattern[end_pos] == Cell::Filled {
-            possible = false; // Conflict with separator
+            possible = false;
         }
         if !possible {
             continue;
         }
 
-        // --- Place the block and recurse ---
-
-        // Save original state for backtracking
         let original_pattern_slice: Vec<Cell> = current_pattern[pos..].to_vec();
 
-        // Fill preceding Empty cells (from start_pos up to pos)
         for i in start_pos..pos {
             if current_pattern[i] == Cell::Unknown {
                 current_pattern[i] = Cell::Empty;
             } else if current_pattern[i] == Cell::Filled {
-                // This case should ideally be caught earlier or indicates an issue
-                // For robustness, let's treat it as impossible here too.
                 possible = false;
                 break;
             }
         }
         if !possible {
-            // Backtrack the empty fills (not strictly necessary if we check first)
-            for i in start_pos..pos {
-                current_pattern[i] = original_pattern_slice[i - pos]; // Restore original
-            }
+            current_pattern[start_pos..pos].copy_from_slice(&original_pattern_slice[(start_pos - pos)..0]);
             continue;
         }
 
-        // Place the Filled block
         for i in pos..end_pos {
             current_pattern[i] = Cell::Filled;
         }
 
-        // Place the Empty separator (if applicable and possible)
         let next_start_pos;
         if end_pos < size {
             current_pattern[end_pos] = Cell::Empty;
-            next_start_pos = end_pos + 1; // Start next block after the separator
+            next_start_pos = end_pos + 1;
         } else {
-            next_start_pos = end_pos; // Reached the end
+            next_start_pos = end_pos; 
         }
 
-        // Recursive call for the next constraint
         generate_recursive(
             size,
             constraints,
@@ -363,38 +349,21 @@ fn generate_recursive(
             solutions,
         );
 
-        // Backtrack: Restore the modified part of the pattern
         for i in pos..current_pattern
             .len()
             .min(pos + original_pattern_slice.len())
         {
             current_pattern[i] = original_pattern_slice[i - pos];
         }
-        // If end_pos was within bounds, reset that separator cell too
         if end_pos < size {
-            // Find original value at end_pos from slice if possible
             if end_pos - pos < original_pattern_slice.len() {
                 current_pattern[end_pos] = original_pattern_slice[end_pos - pos];
             } else {
-                // This case implies end_pos was originally outside the slice we saved,
-                // meaning it must have been Unknown.
                 current_pattern[end_pos] = Cell::Unknown;
             }
         }
     }
 
-    // --- Also consider the case where we place *no more blocks* from start_pos ---
-    // This is only valid if *all* remaining constraints have been placed (base case handles this)
-    // OR if we can fill the rest with Empty.
-    // We need to ensure that if constraint_idx == 0 (first call for this subproblem),
-    // we handle the possibility of the line starting with Empty cells.
-
-    // The loop starting at `start_pos` implicitly handles leading empty cells.
-    // When the base case `constraint_idx == constraints.len()` is reached,
-    // it fills the remaining suffix with Empty. If the loop completes without finding
-    // a valid placement for the *first* constraint (constraint_idx=0), and constraints
-    // is not empty, then no solutions starting from `start_pos` are possible for that constraint.
-    // If constraints *is* empty initially, the base case handles the all-Empty line correctly.
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -404,7 +373,7 @@ struct Variable {
     /// 0-based column index
     col: usize,
     /// State represented by this variable
-    fill: Cell, // Should be Cell::Filled or Cell::Empty
+    fill: Cell,
 }
 
 impl Variable {
@@ -422,15 +391,10 @@ impl Variable {
     /// 1-based result.
     fn encode(&self, nonogram: &Nonogram) -> u32 {
         let num_cols = nonogram.num_cols();
-        // Base offset for the cell (r, c) - using 0-based internally
         let base = (self.row * num_cols + self.col) * 2;
-        // Add 1 for Filled, 2 for Empty (relative to base)
-        // Ensure the final result is 1-based
         (base + self.fill as usize) as u32
     }
 }
-
-// --- Parsing Logic ---
 
 /// Parses a Nonogram from a string description.
 /// Format Assumption:
@@ -447,7 +411,6 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
     let mut num_rows: Option<usize> = None;
     let mut num_cols: Option<usize> = None;
 
-    // Read dimensions first
     if let Some(line) = lines.next() {
         if line.starts_with("rows ") {
             num_rows = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
@@ -521,42 +484,3 @@ pub fn parse_nonogram_file(file_path: &str) -> Result<Nonogram, String> {
         .map_err(|e| format!("Failed to read file '{}': {}", file_path, e))?;
     parse_nonogram(&content)
 }
-
-// Example Usage (in a main function or test)
-/*
-fn main() {
-// Example: A simple 3x3 cross pattern
-let input = "
-rows 3
-cols 3
-1
-1 1
-1
-1
-1 1
-1
-";
-match parse_nonogram(input) {
-Ok(nonogram) => {
-println!("Parsed Nonogram:");
-println!("Rows: {:?}", nonogram.rows);
-println!("Cols: {:?}", nonogram.cols);
-
-let cnf = nonogram.to_cnf();
-        // Now you would pass `cnf` to your SAT solver
-        // Example: let solver = Solver::new(cnf);
-        // Example: if let Some(assignment) = solver.solve() {
-        // Example:     let solution_grid = nonogram.decode(&assignment);
-        // Example:     // Print the solution grid
-        // Example: } else { println!("Unsatisfiable"); }
-
-         println!("Generated CNF (first few clauses):");
-         for clause in cnf.clauses().iter().take(10) {
-             println!("{:?}", clause.iter().map(|l| l.to_i32()).collect::<Vec<_>>());
-         }
-    }
-    Err(e) => {
-        eprintln!("Error parsing nonogram: {}", e);
-    }
-}
- */

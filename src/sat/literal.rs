@@ -79,8 +79,6 @@ pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + Parti
 
     /// Checks if the literal is positive (i.e. has positive polarity).
     /// This is equivalent to `self.polarity()`.
-    /// The original code had `!self.polarity()` for `is_positive`, which is incorrect
-    /// if `polarity() == true` means positive. Corrected to `self.polarity()`.
     fn is_positive(self) -> bool {
         self.polarity()
     }
