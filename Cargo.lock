@@ -513,21 +513,9 @@ dependencies = [
  "itertools 0.14.0",
  "ordered-float",
  "rustc-hash",
- "sat_solver_macros",
  "smallvec",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",
-]
-
-[[package]]
-name = "sat_solver_macros"
-version = "0.1.0"
-dependencies = [
- "heck",
- "itertools 0.14.0",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

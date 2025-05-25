@@ -1,7 +1,17 @@
 [package]
 name = "sat_solver"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+authors = ["Jacob Edwards <jacob.edwards.dev@gmail.com>"]
+description = "A SAT solver implemented in Rust, focusing on performance, efficiency and experimentation."
+license = "MIT"
+repository = "https://github.com/jacobjedwards/rust_sat_solver"
+homepage = "https://github.com/jacobjedwards/rust_sat_solver"
+documentation = "https://docs.rs/sat_solver"
+readme = "README.md"
+keywords = ["SAT", "solver", "logic", "cnf", "dpll"]
+categories = ["algorithms", "science", "command-line-utilities"]
+
 
 [dependencies]
 ordered-float = "5.0.0"
@@ -13,8 +23,6 @@ fastrand = "2.3.0"
 rustc-hash = "2.1.1"
 clap = { version = "4.5.38", features = ["derive"] }
 tikv-jemalloc-ctl = { version = "0.6.0", features = ["stats"] }
-sat_solver_macros = { path = "sat_solver_macros" }
-
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }

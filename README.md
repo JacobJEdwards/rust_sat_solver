@@ -1,9 +1,10 @@
-# SATSolver - A Configurable SAT Solver in Rust
+# sat_solver - A Configurable SAT Solver in Rust
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/YOUR_USERNAME/YOUR_REPONAME/rust.yml?branch=main)](https://github.com/YOUR_USERNAME/YOUR_REPONAME/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/jacobjedwards/rust_sat_solver/rust.yml?branch=main)](https://github.com/jacobjedwards/rust_sat_solver/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-SATSolver is a command-line application written in Rust that implements a SAT (Boolean Satisfiability) solver based on the CDCL (Conflict-Driven Clause Learning) algorithm. It's designed to be configurable and includes modules for solving standard CNF (Conjunctive Normal Form) problems as well as specific applications like Sudoku puzzles by reducing them to SAT.
+sat_solver is a command-line application written in Rust that implements a SAT (Boolean Satisfiability) solver based on 
+the CDCL (Conflict-Driven Clause Learning) algorithm. It's designed to be configurable and includes modules for solving standard CNF (Conjunctive Normal Form) problems as well as specific applications like Sudoku puzzles by reducing them to SAT.
 
 ## Features
 
@@ -30,30 +31,25 @@ SATSolver is a command-line application written in Rust that implements a SAT (B
 
 ## Installation
 
-[//]: # (1.  **Clone the repository:**)
+1. **Clone the repository:**
 
-[//]: # (    ```bash)
+    ```bash
+    git clone https://github.com/jacobjedwards/rust_sat_solver.git
+    cd rust_sat_solver
+    ```
 
-[//]: # (    git clone https://github.com/YOUR_USERNAME/YOUR_REPONAME.git)
-
-[//]: # (    cd YOUR_REPONAME)
-
-[//]: # (    ```)
-
-[//]: # (    *&#40;Replace `YOUR_USERNAME/YOUR_REPONAME` with the actual URL&#41;*)
-
-1. **Build the project:**
+2. **Build the project:**
     For a release build (recommended for performance):
     ```bash
     cargo build --release
     ```
-    The executable will be located at `target/release/satsolver`.
+    The executable will be located at `target/release/sat_solver`.
 
     For a debug build:
     ```bash
     cargo build
     ```
-    The executable will be located at `target/debug/satsolver`.
+    The executable will be located at `target/debug/sat_solver`.
 
     For installation, you can also use:
     ```bash
@@ -104,7 +100,7 @@ These options can be used with most commands:
 
 2. **Solve inline CNF text and print the solution:**
     ```bash
-    ./target/release/satsolver text --input "1 2 0\n-1 0\n-2 0" -p
+    ./target/release/sat_solver text --input "1 2 0\n-1 0\n-2 0" -p
     ```
     *(Note: Input string uses `\n` for newlines if necessary in your shell)*
 
@@ -206,6 +202,6 @@ The statistics block includes:
     *   `src/main.rs`: CLI parsing and main application logic.
     *   `src/sat/`: Core SAT solver implementation (CDCL, CNF, components).
     *   `src/sudoku/`: Sudoku parsing, CNF encoding, and solution decoding.
-    *   `src/smt/`: (Potentially for future SMT extensions - currently minimal).
 *   **Testing:** Run tests with `cargo test`.
+*   **Benchmarks:** Run benchmarks with `cargo bench`.
 *   **Dependencies:** Key dependencies include `clap`, `itertools`, `tikv-jemallocator`, `tikv-jemalloc-ctl`, `rustc_hash`, `smallvec`.
