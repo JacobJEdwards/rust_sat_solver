@@ -121,6 +121,7 @@ impl<const N: usize> Luby<N> {
     ///
     /// # Returns
     /// The Luby number for the given index.
+    #[allow(dead_code)]
     fn luby(x: usize) -> usize {
         let mut k = 1_usize;
         while (1 << (k - 1)) <= x {

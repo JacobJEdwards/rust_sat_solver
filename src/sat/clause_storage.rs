@@ -174,11 +174,15 @@ impl<L: Literal> LiteralStorage<L> for Vec<L> {
     }
 
     unsafe fn get_unchecked(&self, index: usize) -> &L {
-        self.as_slice().get_unchecked(index)
+        unsafe {
+            self.as_slice().get_unchecked(index)
+        }
     }
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
-        self.as_mut_slice().get_unchecked_mut(index)
+        unsafe {
+            self.as_mut_slice().get_unchecked_mut(index)
+        }
     }
 
     fn swap_remove(&mut self, index: usize) -> L {
@@ -230,11 +234,15 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
     }
 
     unsafe fn get_unchecked(&self, index: usize) -> &L {
-        self.as_slice().get_unchecked(index)
+        unsafe {
+            self.as_slice().get_unchecked(index)
+        }
     }
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
-        self.as_mut_slice().get_unchecked_mut(index)
+        unsafe {
+            self.as_mut_slice().get_unchecked_mut(index)
+        }
     }
 
     fn swap_remove(&mut self, index: usize) -> L {

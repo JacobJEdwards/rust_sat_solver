@@ -324,7 +324,6 @@ impl<L: Literal, S: LiteralStorage<L>> Trail<L, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sat::assignment::{Assignment as AssignmentTrait, VecAssignment}; 
     use crate::sat::literal::{Literal as LiteralTrait, PackedLiteral};
 
     const NUM_VARS: usize = 5;

@@ -57,7 +57,7 @@
 //! 2.  **`text`**: Solve a CNF formula provided as plain text.
 //!     ```sh
 //!     sat_solver text --input "<cnf_string>" [OPTIONS]
-//!     # Example: satsolver text --input "1 -2 0\n2 3 0"
+//!     # Example: sat_solver text --input "1 -2 0\n2 3 0"
 //!     ```
 //!
 //! 3.  **`sudoku`**: Solve a Sudoku puzzle.
@@ -418,7 +418,7 @@ fn verify_solution(cnf: Cnf, sol: &Option<Solutions>) {
 /// * `SolutionStats`: Statistics collected during the solving process.
 ///
 /// # Panics
-/// Panics if `solver_name` is not "dpll" or "cdcl".
+/// If `solver_name` is not "dpll" or "cdcl".
 fn solve(
     cnf: Cnf,
     debug: bool,

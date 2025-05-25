@@ -39,11 +39,6 @@ pub type Variable = u32;
 /// - Negating the literal.
 /// - Converting to/from `i32` (DIMACS-like representation).
 /// - Converting to/from a `usize` index (useful for array lookups).
-///
-/// # Required Supertraits
-///
-/// Implementors must also be `Copy`, `Debug`, `Eq`, `Hash`, and `Default` to ensure
-/// they can be easily used in collections, for debugging, and have a default state.
 pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + PartialEq {
     /// Creates a new literal.
     ///

@@ -793,13 +793,6 @@ mod tests {
     type TestClause = Clause<TestLiteral, SmallVec<[TestLiteral; 8]>>;
     type TestAssignment = VecAssignment;
 
-    fn lit(val: i32) -> TestLiteral {
-        TestLiteral::from_i32(val)
-    }
-    fn clause(lits_dimacs: &[i32]) -> TestClause {
-        lits_dimacs.iter().map(|&x| lit(x)).collect()
-    }
-
     fn test_selector_behavior<VS: VariableSelection<TestLiteral>>(
         mut selector: VS,
         num_vars_for_assignment: usize,
@@ -931,21 +924,18 @@ mod tests {
         selector.activity_inc = VSIDS_RESCALE_THRESHOLD * 2.0;
 
         let lit_to_bump = PackedLiteral::new(0, true);
-        assert_eq!(selector.scores[lit_to_bump.index()], 0.0);
+        assert!((selector.scores[lit_to_bump.index()] - 0.0).abs() < 1e-9);
 
         selector.bumps(std::iter::once(lit_to_bump));
         let score_before_decay_and_rescale = selector.scores[lit_to_bump.index()];
-        assert_eq!(
-            score_before_decay_and_rescale,
-            VSIDS_RESCALE_THRESHOLD * 2.0
+        assert!(
+            VSIDS_RESCALE_THRESHOLD.mul_add(-2.0, score_before_decay_and_rescale).abs() < 1e-9,
         );
 
         <VsidsHeap as VariableSelection<TestLiteral>>::decay(&mut selector, 2.0);
         assert!((selector.activity_inc - VSIDS_RESCALE_THRESHOLD).abs() < 1e-9);
-        assert_eq!(
-            selector.scores[lit_to_bump.index()],
-            score_before_decay_and_rescale,
-            "Scores should not change on this decay"
+        assert!(
+            (selector.scores[lit_to_bump.index()] - score_before_decay_and_rescale).abs() < 1e-9,
         );
 
         selector.activity_inc = VSIDS_RESCALE_THRESHOLD * 10.0;

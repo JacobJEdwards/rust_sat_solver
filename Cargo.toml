@@ -11,6 +11,15 @@ documentation = "https://docs.rs/sat_solver"
 readme = "README.md"
 keywords = ["SAT", "solver", "logic", "cnf", "dpll"]
 categories = ["algorithms", "science", "command-line-utilities"]
+exclude = [
+    "target",
+    "examples",
+    "tests",
+    "benches",
+    "docs",
+    "Cargo.lock",
+    "data"
+]
 
 
 [dependencies]
