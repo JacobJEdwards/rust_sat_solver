@@ -485,7 +485,7 @@ impl Sudoku {
     /// A new `Sudoku` instance representing the solved puzzle.
     ///
     /// # Panics
-    /// Panics if `var.encode(self.size)` results in 0, as `NonZeroI32::new` would return `None`.
+    /// if `var.encode(self.size)` results in 0, as `NonZeroI32::new` would return `None`.
     /// However, `Variable::encode` is designed to return positive integers.
     #[must_use]
     pub fn decode(&self, solutions: &Solutions) -> Self {
@@ -653,6 +653,10 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
             continue;
         }
         for (j, c) in line.split_ascii_whitespace().enumerate() {
+            if j >= size {
+                return Err(format!("Invalid Sudoku: Too many numbers in line {}", i + 1));
+            }
+            
             if let Ok(num) = c.parse::<usize>() {
                 if num > size {
                     return Err(format!("Invalid Sudoku: Number {num} exceeds size {size}"));
@@ -877,12 +881,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn parse_sudoku_too_many_numbers_in_line() {
         let s = "1 0 0 0 5\n0 2 0 0\n0 0 0 4\n0 0 1 0";
         match parse_sudoku(s) {
             Ok(_) => panic!("Should have failed or panicked."),
-            Err(e) => panic!("Should have panicked, not returned Err: {e}"),
+            Err(e) => {
+                assert_eq!(e, "Invalid Sudoku: Too many numbers in line 1");
+            }
         }
     }
 

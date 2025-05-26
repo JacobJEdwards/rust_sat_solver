@@ -1,5 +1,4 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
 use crate::sat::clause_storage::LiteralStorage;
@@ -512,7 +511,7 @@ mod tests {
         trail.cnf_non_learnt_idx = 50;
 
         trail.push(l(1), 1, Reason::Clause(10));
-        trail.push(l(2), 1, Reason::Clause(100)); 
+        trail.push(l(2), 1, Reason::Clause(100));
         trail.push(l(3), 1, Reason::Clause(101));
         trail.push(l(4), 1, Reason::Clause(102));
 

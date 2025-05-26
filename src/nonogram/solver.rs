@@ -6,10 +6,14 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroI32;
 
+/// Represents the state of a cell in a Nonogram puzzle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Cell {
+    /// Cell is unknown, not yet filled or empty.
     Unknown = 0,
+    /// Cell is filled with a block.
     Filled = 1,
+    /// Cell is empty, indicating no block is present.
     Empty = 2,
 }
 
@@ -23,10 +27,11 @@ impl Display for Cell {
     }
 }
 
-pub type Constraint = Vec<u32>;
+type Constraint = Vec<u32>;
 type Size = usize;
 type Pattern = Vec<Cell>;
 
+/// Represents a Nonogram puzzle, including its constraints and solution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Nonogram {
     rows: Vec<Constraint>,
@@ -51,6 +56,7 @@ impl Display for Nonogram {
 }
 
 impl Nonogram {
+    /// Creates a new Nonogram instance with the given row and column constraints.
     pub fn new(rows: Vec<Constraint>, cols: Vec<Constraint>) -> Self {
         let row_size = rows.len();
         let col_size = cols.len();
@@ -62,14 +68,17 @@ impl Nonogram {
         }
     }
 
+    /// returns the number of rows in the Nonogram.
     pub fn num_rows(&self) -> usize {
         self.rows.len()
     }
 
+    /// returns the number of columns in the Nonogram.
     pub fn num_cols(&self) -> usize {
         self.cols.len()
     }
 
+    /// decodes a given assignment of variables into a solution grid.
     pub fn decode(&self, assignment: &Solutions) -> Vec<Vec<Cell>> {
         let mut solution = vec![vec![Cell::Unknown; self.num_cols()]; self.num_rows()];
         let assignment_set: std::collections::HashSet<NonZeroI32> =
@@ -94,6 +103,7 @@ impl Nonogram {
         solution
     }
 
+    /// Converts the Nonogram into a CNF (Conjunctive Normal Form) representation suitable for SAT solving.
     pub fn to_cnf<L: Literal, S: LiteralStorage<L>>(&self) -> Cnf<L, S> {
         let num_vars_cell = self.num_rows() * self.num_cols() * 2;
         let mut next_aux_var = (num_vars_cell + 1) as u32;
@@ -337,7 +347,7 @@ fn generate_recursive(
             current_pattern[end_pos] = Cell::Empty;
             next_start_pos = end_pos + 1;
         } else {
-            next_start_pos = end_pos; 
+            next_start_pos = end_pos;
         }
 
         generate_recursive(
@@ -479,6 +489,7 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
     Ok(Nonogram::new(rows, cols))
 }
 
+/// Parses a Nonogram from a file.
 pub fn parse_nonogram_file(file_path: &str) -> Result<Nonogram, String> {
     let content = std::fs::read_to_string(file_path)
         .map_err(|e| format!("Failed to read file '{}': {}", file_path, e))?;

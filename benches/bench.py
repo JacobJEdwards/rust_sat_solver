@@ -1,107 +1,91 @@
-import os
 import sys
 import time
+from typing import Callable
+import statistics
 from pathlib import Path
+import subprocess
+
 
 def run_minisat(path: Path):
-    os.system(f"minisat {path} > /dev/null 2>&1")
+    subprocess.run(
+        ["minisat", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
-def run_sat_solver(path: Path):
-    os.system(f"sat_solver file --path {path} > /dev/null 2>&1")
 
-def handle_directory(directory_path: Path):
+def run_sat_solver(path: Path, *, is_dpll: bool = False) -> None:
+    args = ["sat_solver", "file", "--path", str(path)]
+    if is_dpll:
+        args += ["--solver", "dpll"]
+
+    subprocess.run(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def run_glucose_solver(path: Path):
+    subprocess.run(
+        ["../../glucose/glucose-simp", str(path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def benchmark_solver(solver_name: str, run_fn: Callable[[Path], None], files: list[Path]):
+    print(f"\nBenchmarking {solver_name} on {len(files)} files...")
+
+    times = []
+
+    for i in range(100):
+        if i % 10 == 0:
+            print(f"Iteration {i}...")
+        start = time.perf_counter()
+        for file_path in files:
+            run_fn(file_path)
+        elapsed = time.perf_counter() - start
+        times.append(elapsed)
+
+    avg = sum(times) / len(times)
+    best = min(times)
+    worst = max(times)
+    stddev = statistics.stdev(times)
+
+    print(f"\nResults for {solver_name}:")
+    print(f"  Best-case:    {best:.6f} s")
+    print(f"  Worst-case:   {worst:.6f} s")
+    print(f"  Average:      {avg:.6f} s")
+    print(f"  Std Dev:      {stddev:.6f} s")
+
+
+def handle_directory(directory_path: Path) -> None:
     assert directory_path.is_dir()
-    assert all(file.is_file() for file in directory_path.iterdir())
+    files = sorted([f for f in directory_path.iterdir() if f.is_file()])
+    if not files:
+        print("Directory contains no files.")
+        return
 
-    times = []
+    # benchmark_solver(
+    # "SAT Solver DPLL", lambda p: run_sat_solver(p, is_dpll=True), files
+    # )
+    benchmark_solver("Glucose", run_glucose_solver, files)
+    benchmark_solver("MiniSAT", run_minisat, files)
+    benchmark_solver("SAT Solver", run_sat_solver, files)
 
-    for i in range(100):
-#         if i % 10 == 0:
-#             print(f"Running MiniSAT on {directory_path} iteration {i}")
-        t = time.time()
-        for file_path in directory_path.iterdir():
-            run_minisat(file_path)
-
-        t = time.time() - t
-        times.append(t)
-
-    avg_time = sum(times) / len(times)
-    avg_time = avg_time * 1e9
-    worst_case = max(times)
-    worst_case = worst_case * 1e9
-    best_case = min(times)
-    best_case = best_case * 1e9
-    print(f"Worst case time taken (MiniSAT): {worst_case} ns")
-    print(f"Best case time taken (MiniSAT): {best_case} ns")
-    print(f"Standard deviation (MiniSAT): {sum((x - avg_time) ** 2 for x in times) / len(times)} ns")
-    print(f"Average time taken (MiniSAT): {avg_time} ns")
-
-    times = []
-
-    for i in range(100):
-#         if i % 10 == 0:
-#             print(f"Running SAT Solver on {directory_path} iteration {i}")
-        t = time.time()
-        for file_path in directory_path.iterdir():
-            run_sat_solver(file_path)
-        t = time.time() - t
-        times.append(t)
-
-    avg_time = sum(times) / len(times)
-    avg_time = avg_time * 1e9
-    worst_case = max(times)
-    worst_case = worst_case * 1e9
-    best_case = min(times)
-    best_case = best_case * 1e9
-
-    print(f"Worst case time taken (SAT Solver): {worst_case} ns")
-    print(f"Best case time taken (SAT Solver): {best_case} ns")
-    print(f"Standard deviation (SAT Solver): {sum((x - avg_time) ** 2 for x in times) / len(times)} ns")
-    print(f"Average time taken (SAT Solver): {avg_time} ns")
-
-def handle_file(file_path: Path):
-    assert file_path.is_file()
-    
-    t = time.time()
-    
-    for i in range(100):
-        if i % 10 == 0:
-            print(f"Running MiniSAT on {file_path} iteration {i}")
-        run_minisat(file_path)
-        
-    t = time.time() - t
-    print(f"Average time taken (MiniSAT): {t / 100} seconds")
-    
-    t = time.time()
-    
-    for i in range(100):
-        if i % 10 == 0:
-            print(f"Running SAT Solver on {file_path} iteration {i}")
-        run_sat_solver(file_path)
-        
-    t = time.time() - t
-    print(f"Average time taken (SAT Solver): {t / 100} seconds")
-    
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    if len(args) != 1:
-        print("Usage: python bench.py <path>")
+    if len(sys.argv) != 2:
+        print("Usage: python bench.py <directory_path>")
         sys.exit(1)
-        
-    path = args[0]
-    
-    path = Path(path)
-    if not path.exists():
-        print(f"Path {path} does not exist.")
+
+    directory = Path(sys.argv[1])
+    if not directory.exists():
+        print(f"Path {directory} does not exist.")
         sys.exit(1)
-    
-    if path.is_dir():
-        handle_directory(path)
-    
-    elif path.is_file():
-        handle_file(path)
-    else:
-        print(f"Path {path} is neither a file nor a directory.")
+
+    if not directory.is_dir():
+        print(f"Path {directory} is not a directory.")
         sys.exit(1)
-    
+
+    handle_directory(directory)
+    sys.exit(1)

@@ -198,6 +198,20 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize> Pr
 impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
     WatchedLiterals<L, S, A, N>
 {
+    /// Propagates watches for the given indices.
+    /// /// This method iterates through the provided indices and processes each clause
+    /// using `process_clause`. If a clause is found to be falsified, it returns the index
+    /// of that clause.
+    /// 
+    /// # Arguments
+    /// * `indices`: A slice of indices representing the clauses to process.
+    /// * `trail`: A mutable reference to the `Trail` where new propagations are added.
+    /// * `assignment`: A reference to the current `Assignment` state.
+    /// * `cnf`: A mutable reference to the `Cnf` formula containing the clauses.
+    /// 
+    /// # Returns
+    /// * `Some(usize)`: If a clause is found to be falsified, returns the index of that clause.
+    /// * `None`: If no clauses are falsified, returns `None`.
     pub fn propagate_watch(
         &mut self,
         indices: &[usize],
@@ -210,6 +224,26 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
             .find_map(|&idx| self.process_clause(idx, trail, assignment, cnf))
     }
 
+    /// Processes a clause by checking the values of its watched literals.
+    /// This method checks the first two literals of the clause and determines
+    /// the outcome based on their values:
+    /// - If the first literal is true, the clause is satisfied, and no further action is needed.
+    /// - If both literals are false, the clause is falsified, and its index is returned.
+    /// - If the first literal is unassigned, it is handled by calling `handle_false`.
+    /// - If the second literal is unassigned, it is swapped with the first literal,
+    ///   and `handle_false` is called for the second literal.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `clause_idx`: The index of the clause to process.
+    /// * `trail`: A mutable reference to the `Trail` where new propagations are added.
+    /// * `assignment`: A reference to the current `Assignment` state.
+    /// * `cnf`: A mutable reference to the `Cnf` formula containing the clauses.
+    /// 
+    /// # Returns
+    /// 
+    /// * `Some(usize)`: If the clause is found to be falsified, returns the index of that clause.
+    /// * `None`: If the clause is satisfied or not falsified, returns `None`.
     pub fn process_clause(
         &mut self,
         clause_idx: usize,
