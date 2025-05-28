@@ -5,6 +5,7 @@ use crate::sat::solver::Solutions;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::num::NonZeroI32;
+use std::path::PathBuf;
 
 /// Represents the state of a cell in a Nonogram puzzle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -495,8 +496,8 @@ pub fn parse_nonogram(input: &str) -> Result<Nonogram, String> {
 }
 
 /// Parses a Nonogram from a file.
-pub fn parse_nonogram_file(file_path: &str) -> Result<Nonogram, String> {
+pub fn parse_nonogram_file(file_path: &PathBuf) -> Result<Nonogram, String> {
     let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file '{}': {}", file_path, e))?;
+        .map_err(|e| format!("Failed to read file '{}': {}", file_path.display(), e))?;
     parse_nonogram(&content)
 }

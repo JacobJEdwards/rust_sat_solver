@@ -20,6 +20,7 @@ use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use itertools::Itertools; // For `collect_vec`
 use std::io::{self, BufRead};
+use std::path::PathBuf;
 
 /// Parses DIMACS formatted data from a `BufRead` source into a `Cnf` structure.
 ///
@@ -44,10 +45,12 @@ use std::io::{self, BufRead};
 /// # Returns
 ///
 /// A `Cnf<L, S>` structure representing the parsed formula.
+/// Or `None` if no clauses were found (e.g. empty file or only comments).
 pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> Cnf<L, S> {
     let mut lines = reader
         .lines()
-        .map(|line_result| line_result.unwrap_or_else(|e| panic!("Failed to read line: {e}")));
+        .map_while(Result::ok)
+        .filter(|line| !line.is_empty());
 
     let mut clauses_dimacs: Vec<Vec<i32>> = Vec::new();
 
@@ -97,7 +100,7 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
 /// # Returns
 ///
 /// `io::Result::Ok(Cnf<T, S>)` if parsing is successful.
-pub fn parse_file<T: Literal, S: LiteralStorage<T>>(file_path: &str) -> io::Result<Cnf<T, S>> {
+pub fn parse_file<T: Literal, S: LiteralStorage<T>>(file_path: &PathBuf) -> io::Result<Cnf<T, S>> {
     let file = std::fs::File::open(file_path)?;
     let reader = io::BufReader::new(file);
     Ok(parse_dimacs(reader))

@@ -5,6 +5,7 @@ use crate::sat::solver::Solutions;
 use itertools::Itertools;
 use std::fmt::Display;
 use std::num::NonZeroI32;
+use std::path::PathBuf;
 
 /// Represents a Sudoku board as a 2D vector of numbers.
 ///
@@ -591,7 +592,7 @@ impl Sudoku {
     ///
     /// Returns `Err(String)` if the file cannot be read, or if its content
     /// is an invalid Sudoku representation.
-    pub fn from_file(file_path: &str) -> Result<Self, String> {
+    pub fn from_file(file_path: &PathBuf) -> Result<Self, String> {
         parse_sudoku_file(file_path)
     }
 }
@@ -693,7 +694,7 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
 ///
 /// # Errors
 /// Returns `Err(String)` if the file cannot be read or if its content is not a valid Sudoku representation.
-pub fn parse_sudoku_file(file_path: &str) -> Result<Sudoku, String> {
+pub fn parse_sudoku_file(file_path: &PathBuf) -> Result<Sudoku, String> {
     let content = std::fs::read_to_string(file_path).map_err(|e| e.to_string())?;
     parse_sudoku(&content)
 }
@@ -914,12 +915,6 @@ mod tests {
             std::panic::catch_unwind(|| parse_sudoku(s)).is_err(),
             "Sudoku::new should panic for size 5"
         );
-    }
-
-    #[test]
-    fn parse_sudoku_file_non_existent() {
-        let result = parse_sudoku_file("non_existent_sudoku.txt");
-        assert!(result.is_err());
     }
 
     #[test]

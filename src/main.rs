@@ -103,6 +103,9 @@
 
 use crate::sat::assignment::{AssignmentImpls, AssignmentType};
 use crate::sat::cdcl::Cdcl;
+use crate::sat::clause_management::{
+    ClauseManagement, ClauseManagementImpls, LbdClauseManagement, NoClauseManagement,
+};
 use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls, LiteralStorageType};
 use crate::sat::cnf::Cnf;
 use crate::sat::dimacs::parse_file;
@@ -110,13 +113,15 @@ use crate::sat::dpll::Dpll;
 use crate::sat::literal::{Literal, LiteralImpls, LiteralType};
 use crate::sat::propagation::{PropagatorImpls, PropagatorType};
 use crate::sat::restarter::{RestarterImpls, RestarterType};
-use crate::sat::solver::{DynamicConfig, SolutionStats, Solutions, Solver, SolverImpls, SolverType};
+use crate::sat::solver::{
+    DynamicConfig, SolutionStats, Solutions, Solver, SolverImpls, SolverType,
+};
 use crate::sat::variable_selection::{VariableSelectionImpls, VariableSelectionType};
 use clap::{Args, Parser, Subcommand};
 use itertools::Itertools;
+use std::path::PathBuf;
 use std::time::Duration;
 use tikv_jemalloc_ctl::{epoch, stats};
-use crate::sat::clause_management::{ClauseManagement, ClauseManagementImpls, LbdClauseManagement, NoClauseManagement};
 
 mod nonogram;
 mod sat;
@@ -136,7 +141,7 @@ struct Cli {
     /// An optional global path argument. If provided without a subcommand,
     /// it's treated as the path to a DIMACS .cnf file to solve.
     #[arg(global = true)]
-    path: Option<String>,
+    path: Option<PathBuf>,
 
     /// Specifies the subcommand to execute (e.g. `file`, `text`, `sudoku`, `nonogram`).
     #[clap(subcommand)]
@@ -154,7 +159,7 @@ enum Commands {
     File {
         /// Path to the DIMACS .cnf file.
         #[arg(long)]
-        path: String,
+        path: PathBuf,
 
         /// Common options for this subcommand.
         #[command(flatten)]
@@ -178,7 +183,7 @@ enum Commands {
     Sudoku {
         /// Path to the Sudoku file. The format of this file is defined by the `sudoku::solver::parse_sudoku_file` function.
         #[arg(long)]
-        path: String,
+        path: PathBuf,
 
         /// If true, the generated DIMACS CNF representation of the Sudoku puzzle will be printed and saved to a file.
         #[arg(short, long, default_value_t = false)]
@@ -194,7 +199,7 @@ enum Commands {
     Nonogram {
         /// Path to the Nonogram file. The format of this file is defined by the `nonogram::solver::parse_nonogram_file` function.
         #[arg(long)]
-        path: String,
+        path: PathBuf,
 
         /// Common options for this subcommand.
         #[command(flatten)]
@@ -203,7 +208,7 @@ enum Commands {
 }
 
 /// Defines common command-line options shared across different subcommands.
-#[derive(Args, Debug, Default)]
+#[derive(Args, Debug, Default, Clone)]
 struct CommonOptions {
     /// Enable debug output, providing more verbose logging during the solving process.
     #[arg(short, long, default_value_t = false)]
@@ -283,16 +288,67 @@ fn get_solver<L: Literal, S: LiteralStorage<L>>(
     common: &CommonOptions,
     cnf: Cnf<L, S>,
 ) -> SolverImpls<DynamicConfig> {
-    let (assignment, manager, propagator, selector, restarter) =
-        get_solver_parts(common, &cnf);
+    let (assignment, manager, propagator, selector, restarter) = get_solver_parts(common, &cnf);
 
     match common.solver {
-        SolverType::Cdcl => {
-            SolverImpls::Cdcl(Box::from(Cdcl::<DynamicConfig>::from_parts(cnf.clone(), assignment, manager, propagator, restarter, selector)))
+        SolverType::Cdcl => SolverImpls::Cdcl(Box::from(Cdcl::<DynamicConfig>::from_parts(
+            cnf.clone(),
+            assignment,
+            manager,
+            propagator,
+            restarter,
+            selector,
+        ))),
+        SolverType::Dpll => SolverImpls::Dpll(Box::from(Dpll::<DynamicConfig>::from_parts(
+            cnf.clone(),
+            assignment,
+            manager,
+            propagator,
+            restarter,
+            selector,
+        ))),
+    }
+}
+
+/// Solves a directory of CNF files.
+/// This function iterates over all `.cnf` files in the directory, parses each file,
+/// solves it, and reports the results.
+///
+/// # Arguments
+/// * `path` - The path to the directory containing CNF files.
+/// * `common` - Common options for the solver, such as debug mode, verification, and statistics.
+///
+/// # Panics
+/// If the provided path is not a directory or if any file cannot be read or parsed.
+fn solve_dir(path: &PathBuf, common: CommonOptions) {
+    if !path.is_dir() {
+        eprintln!("Provided path is not a directory: {}", path.display());
+        std::process::exit(1);
+    }
+
+    for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        let file_path = entry.path().to_path_buf();
+        if file_path.extension().is_none_or(|ext| ext != "cnf") {
+            eprintln!("Skipping non-CNF file: {}", file_path.display());
+            continue;
         }
-        SolverType::Dpll => {
-            SolverImpls::Dpll(Box::from(Dpll::<DynamicConfig>::from_parts(cnf.clone(), assignment, manager, propagator, restarter, selector)))
+        
+        if !file_path.is_file() {
+            eprintln!("Skipping non-file entry: {}", file_path.display());
+            continue;
         }
+        
+        if !file_path.exists() {
+            eprintln!("File does not exist: {}", file_path.display());
+            continue;
+        }
+
+        let time = std::time::Instant::now();
+        let cnf = parse_file(&file_path)
+            .unwrap_or_else(|_| panic!("Failed to parse file: {}", file_path.display()));
+        let elapsed = time.elapsed();
+
+        solve_and_report(cnf, common.clone(), Some(&file_path), elapsed);
     }
 }
 
@@ -303,13 +359,22 @@ fn get_solver<L: Literal, S: LiteralStorage<L>>(
 fn main() {
     let cli = Cli::parse();
 
-    // handle the case where a path is provided globally without a subcommand.
-    // this defaults to solving a DIMACS file.
+    // handle the case where a path is provided globally without a subcommand
+    // this defaults to solving a DIMACS file
     if let Some(path) = cli.path.clone() {
         if cli.command.is_none() {
+            if !path.exists() {
+                eprintln!("File does not exist: {}", path.display());
+                std::process::exit(1);
+            }
+
+            if path.is_dir() {
+                return solve_dir(&path, cli.common.clone());
+            }
+
             let time = std::time::Instant::now();
-            let cnf =
-                parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
+            let cnf = parse_file(&path)
+                .unwrap_or_else(|_| panic!("Failed to parse file: {}", path.display()));
             let elapsed = time.elapsed();
 
             solve_and_report(cnf, cli.common, Some(&path), elapsed);
@@ -319,9 +384,18 @@ fn main() {
 
     match cli.command {
         Some(Commands::File { path, common }) => {
+            if !path.exists() {
+                eprintln!("File does not exist: {}", path.display());
+                std::process::exit(1);
+            }
+
+            if path.is_dir() {
+                return solve_dir(&path, common.clone());
+            }
+
             let time = std::time::Instant::now();
-            let cnf =
-                parse_file(&path).unwrap_or_else(|_| panic!("Failed to parse file: {}", path));
+            let cnf = parse_file(&path)
+                .unwrap_or_else(|_| panic!("Failed to parse file: {}", path.display()));
             let elapsed = time.elapsed();
 
             solve_and_report(cnf, common, Some(&path), elapsed);
@@ -340,6 +414,16 @@ fn main() {
             common,
             export_dimacs,
         }) => {
+            if !path.exists() {
+                eprintln!("Sudoku file does not exist: {}", path.display());
+                std::process::exit(1);
+            }
+
+            if !path.is_file() {
+                eprintln!("Provided path is not a file: {}", path.display());
+                std::process::exit(1);
+            }
+
             let time = std::time::Instant::now();
             let sudoku = sudoku::solver::parse_sudoku_file(&path);
 
@@ -353,7 +437,7 @@ fn main() {
                         let dimacs = cnf.to_string();
                         println!("DIMACS:\n{dimacs}");
 
-                        let path_name = path.to_string();
+                        let path_name = path.display().to_string();
                         let dimacs_path = format!("{}.cnf", path_name);
                         std::fs::write(&dimacs_path, dimacs).unwrap_or_else(|e| {
                             panic!("Unable to write file {}: {}", dimacs_path, e)
@@ -402,6 +486,16 @@ fn main() {
             }
         }
         Some(Commands::Nonogram { path, common }) => {
+            if !path.exists() {
+                eprintln!("Nonogram file does not exist: {}", path.display());
+                std::process::exit(1);
+            }
+
+            if !path.is_file() {
+                eprintln!("Provided path is not a file: {}", path.display());
+                std::process::exit(1);
+            }
+
             let time = std::time::Instant::now();
             let nonogram = nonogram::solver::parse_nonogram_file(&path);
             match nonogram {
@@ -499,7 +593,7 @@ fn verify_solution(cnf: Cnf, sol: &Option<Solutions>) {
 fn solve(
     cnf: Cnf,
     debug: bool,
-    label: Option<&str>,
+    label: Option<&PathBuf>,
     common_options: &CommonOptions,
 ) -> (Option<Solutions>, Duration, SolutionStats) {
     if let Some(name) = label {
@@ -524,7 +618,10 @@ fn solve(
 ///
 /// # Returns
 /// See `solve` function return type.
-fn solve_impl(cnf: Cnf, common_options: &CommonOptions) -> (Option<Solutions>, Duration, SolutionStats) {
+fn solve_impl(
+    cnf: Cnf,
+    common_options: &CommonOptions,
+) -> (Option<Solutions>, Duration, SolutionStats) {
     epoch::advance().unwrap();
 
     let time = std::time::Instant::now();
@@ -551,7 +648,12 @@ fn solve_impl(cnf: Cnf, common_options: &CommonOptions) -> (Option<Solutions>, D
 /// * `common` - `CommonOptions` providing solver configuration (debug, verify, stats, solver type).
 /// * `label` - An optional label for the problem (e.g. file path).
 /// * `parse_time` - The time taken to parse the CNF input.
-fn solve_and_report(cnf: Cnf, common: CommonOptions, label: Option<&str>, parse_time: Duration) {
+fn solve_and_report(
+    cnf: Cnf,
+    common: CommonOptions,
+    label: Option<&PathBuf>,
+    parse_time: Duration,
+) {
     epoch::advance().unwrap();
 
     let (sol, elapsed, solver_stats) = solve(cnf.clone(), common.debug, label, &common);
