@@ -15,13 +15,15 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
+use crate::sat::clause_management::ClauseManagementImpls::LbdActivityClauseManagement;
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
 use crate::sat::propagation::Propagator;
 use crate::sat::trail::Trail;
+use clap::ValueEnum;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 /// A constant factor used to decay clause activities.
 const DECAY_FACTOR: f64 = 0.95;
@@ -35,14 +37,14 @@ const DECAY_FACTOR: f64 = 0.95;
 ///
 /// * `L`: The type of `Literal` used in clauses.
 /// * `S`: The `LiteralStorage` type used within clauses.
-pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + Default {
+pub trait ClauseManagement: Clone + Debug + Default {
     /// Creates a new instance of the clause management strategy.
     ///
     /// # Arguments
     ///
     /// * `clauses`: An initial slice of clauses. This might be used to initialise
     ///   internal structures
-    fn new(clauses: &[Clause<L, S>]) -> Self;
+    fn new<L: Literal, S: LiteralStorage<L>>(clauses: &[Clause<L, S>]) -> Self;
 
     /// Called by the solver after a conflict occurs and a new clause might have been learnt.
     ///
@@ -52,7 +54,7 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
     /// # Arguments
     ///
     /// * `cnf`: A mutable reference to the `Cnf` formula, allowing modification of clause activities.
-    fn on_conflict(&mut self, cnf: &mut Cnf<L, S>);
+    fn on_conflict<L: Literal, S: LiteralStorage<L>>(&mut self, cnf: &mut Cnf<L, S>);
 
     /// Determines whether the clause database should be cleaned.
     ///
@@ -75,7 +77,7 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
     /// * `trail`: A mutable reference to the `Trail`, to update clause indices used as reasons.
     /// * `propagator`: A mutable reference to the `Propagator`, to update its internal clause references.
     /// * `assignment`: A mutable reference to the `Assignment` (currently unused by `LbdClauseManagement`).
-    fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
+    fn clean_clause_db<L: Literal, S: LiteralStorage<L>, P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         cnf: &mut Cnf<L, S>,
         trail: &mut Trail<L, S>,
@@ -92,7 +94,11 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
     ///
     /// * `cnf`: A mutable reference to the `Cnf` formula, to access and modify the clause.
     /// * `c_ref`: The index of the clause whose activity should be bumped (often the newly learnt clause).
-    fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize);
+    fn bump_involved_clause_activities<L: Literal, S: LiteralStorage<L>>(
+        &mut self,
+        cnf: &mut Cnf<L, S>,
+        c_ref: usize,
+    );
 
     /// Returns the total number of clauses removed by this management strategy so far.
     fn num_removed(&self) -> usize;
@@ -113,7 +119,7 @@ pub trait ClauseManagement<L: Literal, S: LiteralStorage<L>>: Clone + Debug + De
 /// * `S`: The `LiteralStorage` type.
 /// * `N`: A compile-time constant defining the conflict interval at which database cleaning is considered.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct LbdClauseManagement<L: Literal, S: LiteralStorage<L>, const N: usize> {
+pub struct LbdClauseManagement<const N: usize> {
     /// The interval (number of conflicts) between database cleaning attempts.
     interval: usize,
     /// Counter for conflicts since the last database cleanup.
@@ -126,19 +132,17 @@ pub struct LbdClauseManagement<L: Literal, S: LiteralStorage<L>, const N: usize>
     /// Set of original indices of clauses selected for removal.
     indices_to_remove: FxHashSet<usize>,
     /// Buffer for storing learnt clauses that are kept after cleaning.
-    new_learnt_clauses: Vec<Clause<L, S>>,
+    new_learnt_clauses: Vec<Vec<i32>>,
     /// Map from old clause indices to new clause indices after compaction.
     old_to_new_idx_map: FxHashMap<usize, usize>,
 }
 
-impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
-    for LbdClauseManagement<L, S, N>
-{
+impl<const N: usize> ClauseManagement for LbdClauseManagement<N> {
     /// Creates a new `LbdClauseManagement` instance.
     ///
     /// Initialises internal buffers and sets the cleaning interval based on `N`.
     /// The initial `clauses` slice is used to estimate initial capacities but not directly stored.
-    fn new(clauses: &[Clause<L, S>]) -> Self {
+    fn new<L: Literal, S: LiteralStorage<L>>(clauses: &[Clause<L, S>]) -> Self {
         let initial_capacity = clauses.len();
         let candidates = Vec::with_capacity(initial_capacity);
 
@@ -162,7 +166,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     }
 
     /// Increments the conflict counter and decays activities of all learnt clauses.
-    fn on_conflict(&mut self, cnf: &mut Cnf<L, S>) {
+    fn on_conflict<L: Literal, S: LiteralStorage<L>>(&mut self, cnf: &mut Cnf<L, S>) {
         self.conflicts_since_last_cleanup = self.conflicts_since_last_cleanup.wrapping_add(1);
         Self::decay_clause_activities(cnf);
     }
@@ -185,7 +189,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     /// - Resets the conflict counter.
     ///
     /// The `assignment` parameter is currently unused by this implementation.
-    fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
+    fn clean_clause_db<L: Literal, S: LiteralStorage<L>, P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         cnf: &mut Cnf<L, S>,
         trail: &mut Trail<L, S>,
@@ -249,13 +253,13 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
             self.indices_to_remove.insert(*idx);
         }
 
-        self.new_learnt_clauses.clear();
+        let mut new_learnt_clauses = Vec::with_capacity(num_to_remove);
         self.old_to_new_idx_map.clear();
 
         let mut current_new_idx = learnt_start_idx;
         for old_idx in learnt_start_idx..cnf.len() {
             if !self.indices_to_remove.contains(&old_idx) {
-                self.new_learnt_clauses.push(cnf[old_idx].clone());
+                new_learnt_clauses.push(cnf[old_idx].clone());
                 self.old_to_new_idx_map.insert(old_idx, current_new_idx);
                 current_new_idx = current_new_idx.wrapping_add(1);
             }
@@ -266,7 +270,7 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
 
         // update CNF by replacing old learnt clauses with the filtered list
         cnf.clauses.truncate(learnt_start_idx);
-        cnf.clauses.append(&mut self.new_learnt_clauses);
+        cnf.clauses.append(&mut new_learnt_clauses);
 
         trail.remap_clause_indices(&self.old_to_new_idx_map);
 
@@ -283,7 +287,11 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     /// Bumps the activity of the specified clause.
     ///
     /// In this strategy, only the referenced clause itself has its activity bumped by a fixed amount (1.0).
-    fn bump_involved_clause_activities(&mut self, cnf: &mut Cnf<L, S>, c_ref: usize) {
+    fn bump_involved_clause_activities<L: Literal, S: LiteralStorage<L>>(
+        &mut self,
+        cnf: &mut Cnf<L, S>,
+        c_ref: usize,
+    ) {
         let clause = &mut cnf[c_ref];
         clause.bump_activity(1.0);
     }
@@ -294,10 +302,10 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> ClauseManagement<L, S>
     }
 }
 
-impl<L: Literal, S: LiteralStorage<L>, const N: usize> LbdClauseManagement<L, S, N> {
+impl<const N: usize> LbdClauseManagement<N> {
     /// Decays the activity of all learnt clauses by a fixed factor.
     /// This is called after each conflict.
-    fn decay_clause_activities(cnf: &mut Cnf<L, S>) {
+    fn decay_clause_activities<L: Literal, S: LiteralStorage<L>>(cnf: &mut Cnf<L, S>) {
         for clause in &mut cnf.clauses[cnf.non_learnt_idx..] {
             clause.decay_activity(DECAY_FACTOR);
         }
@@ -312,23 +320,18 @@ impl<L: Literal, S: LiteralStorage<L>, const N: usize> LbdClauseManagement<L, S,
 ///
 /// * `L`: The type of `Literal`.
 /// * `S`: The `LiteralStorage` type.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct NoClauseManagement<L: Literal, S: LiteralStorage<L>> {
-    /// Phantom data to use the generic type parameters `L` and `S`.
-    _phantom: std::marker::PhantomData<(L, S)>,
-}
+#[derive(Debug, Clone, Default, PartialEq, Copy, Eq)]
+pub struct NoClauseManagement;
 
-impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManagement<L, S> {
+impl ClauseManagement for NoClauseManagement {
     /// Creates a new `NoClauseManagement` instance.
     /// The `clauses` argument is ignored.
-    fn new(_clauses: &[Clause<L, S>]) -> Self {
-        Self {
-            _phantom: std::marker::PhantomData,
-        }
+    fn new<L: Literal, S: LiteralStorage<L>>(_clauses: &[Clause<L, S>]) -> Self {
+        Self
     }
 
     /// This is a no-op for `NoClauseManagement`.
-    fn on_conflict(&mut self, _cnf: &mut Cnf<L, S>) {}
+    fn on_conflict<L: Literal, S: LiteralStorage<L>>(&mut self, _cnf: &mut Cnf<L, S>) {}
 
     /// Always returns `false` as this strategy never cleans the database.
     fn should_clean_db(&self) -> bool {
@@ -336,7 +339,7 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
     }
 
     /// This is a no-op for `NoClauseManagement`.
-    fn clean_clause_db<P: Propagator<L, S, A>, A: Assignment>(
+    fn clean_clause_db<L: Literal, S: LiteralStorage<L>, P: Propagator<L, S, A>, A: Assignment>(
         &mut self,
         _cnf: &mut Cnf<L, S>,
         _trail: &mut Trail<L, S>,
@@ -346,10 +349,117 @@ impl<L: Literal, S: LiteralStorage<L>> ClauseManagement<L, S> for NoClauseManage
     }
 
     /// This is a no-op for `NoClauseManagement`.
-    fn bump_involved_clause_activities(&mut self, _cnf: &mut Cnf<L, S>, _c_ref: usize) {}
+    fn bump_involved_clause_activities<L: Literal, S: LiteralStorage<L>>(
+        &mut self,
+        _cnf: &mut Cnf<L, S>,
+        _c_ref: usize,
+    ) {
+    }
 
     /// Always returns `0` as no clauses are ever removed.
     fn num_removed(&self) -> usize {
         0
+    }
+}
+
+/// Possible clause management implementations
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClauseManagementImpls<const N: usize> {
+    /// No clause management variant
+    NoClauseManagement(NoClauseManagement),
+    /// LBD and activity variant
+    LbdActivityClauseManagement(LbdClauseManagement<N>),
+}
+
+impl<const N: usize> Default for ClauseManagementImpls<N> {
+    fn default() -> Self {
+        Self::NoClauseManagement(NoClauseManagement)
+    }
+}
+
+impl<const N: usize> ClauseManagement for ClauseManagementImpls<N> {
+    fn new<L: Literal, S: LiteralStorage<L>>(clauses: &[Clause<L, S>]) -> Self {
+        LbdActivityClauseManagement(LbdClauseManagement::new(clauses))
+    }
+
+    fn on_conflict<L: Literal, S: LiteralStorage<L>>(&mut self, cnf: &mut Cnf<L, S>) {
+        match self {
+            LbdActivityClauseManagement(m) => m.on_conflict(cnf),
+            Self::NoClauseManagement(m) => m.on_conflict(cnf),
+        }
+    }
+
+    fn should_clean_db(&self) -> bool {
+        match self {
+            LbdActivityClauseManagement(l) => l.should_clean_db(),
+            Self::NoClauseManagement(m) => m.should_clean_db(),
+        }
+    }
+
+    fn clean_clause_db<L: Literal, S: LiteralStorage<L>, P: Propagator<L, S, A>, A: Assignment>(
+        &mut self,
+        cnf: &mut Cnf<L, S>,
+        trail: &mut Trail<L, S>,
+        propagator: &mut P,
+        assignment: &mut A,
+    ) {
+        match self {
+            LbdActivityClauseManagement(m) => m.clean_clause_db(cnf, trail, propagator, assignment),
+            Self::NoClauseManagement(m) => m.clean_clause_db(cnf, trail, propagator, assignment),
+        }
+    }
+
+    fn bump_involved_clause_activities<L: Literal, S: LiteralStorage<L>>(
+        &mut self,
+        cnf: &mut Cnf<L, S>,
+        c_ref: usize,
+    ) {
+        match self {
+            LbdActivityClauseManagement(m) => m.bump_involved_clause_activities(cnf, c_ref),
+            Self::NoClauseManagement(m) => m.bump_involved_clause_activities(cnf, c_ref),
+        }
+    }
+
+    fn num_removed(&self) -> usize {
+        match self {
+            LbdActivityClauseManagement(m) => m.num_removed(),
+            Self::NoClauseManagement(m) => m.num_removed(),
+        }
+    }
+}
+
+/// Enum representing the type of clause management strategy to use in a SAT solver.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default, ValueEnum)]
+pub enum ClauseManagementType {
+    /// No clause management strategy
+    NoClauseManagement,
+    /// LBD and activity-based clause management strategy
+    #[default]
+    LbdActivityClauseManagement,
+}
+
+impl Display for ClauseManagementType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoClauseManagement => write!(f, "No Clause Management"),
+            Self::LbdActivityClauseManagement => write!(f, "LBD and Activity Clause Management"),
+        }
+    }
+}
+
+impl ClauseManagementType {
+    /// Converts the `ClauseManagementType` to a concrete `ClauseManagementImpls`.
+    pub fn to_impl<L: Literal, S: LiteralStorage<L>, const N: usize>(
+        &self,
+        clauses: &[Clause<L, S>],
+    ) -> ClauseManagementImpls<N> {
+        match self {
+            Self::NoClauseManagement => {
+                ClauseManagementImpls::NoClauseManagement(NoClauseManagement::new(clauses))
+            }
+            Self::LbdActivityClauseManagement => {
+                LbdActivityClauseManagement(LbdClauseManagement::<N>::new(clauses))
+            }
+        }
     }
 }

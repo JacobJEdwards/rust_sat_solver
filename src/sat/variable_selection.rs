@@ -19,11 +19,12 @@
 
 use crate::sat::assignment::Assignment;
 use crate::sat::literal::Literal;
+use clap::ValueEnum;
 use fastrand::Rng;
 use ordered_float::OrderedFloat;
 use std::cell::RefCell;
 use std::collections::BinaryHeap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 
 /// Trait defining the interface for variable selection strategies.
@@ -531,7 +532,7 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
     /// for which `assignment[i]` is unassigned is chosen.
     /// Polarity is chosen randomly.
     fn pick<A: Assignment>(&mut self, assignment: &A) -> Option<L> {
-        #![allow(clippy::cast_possible_truncation)] 
+        #![allow(clippy::cast_possible_truncation)]
 
         let mut rng = self.rand.borrow_mut();
 
@@ -781,6 +782,155 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
     }
 }
 
+/// Enum to encapsulate different variable selection implementations.
+#[derive(Debug, Clone)]
+pub enum VariableSelectionImpls {
+    /// VSIDS with a vector.
+    VSIDS(Vsids),
+    /// VSIDS with a binary heap.
+    VsidsHeap(VsidsHeap),
+    /// Fixed order variable selection.
+    FixedOrder(FixedOrder),
+    /// Random order variable selection.
+    RandomOrder(RandomOrder),
+    /// Jeroslow-Wang one-sided variable selection.
+    JeroslowWangOneSided(JeroslowWangOneSided),
+    /// Jeroslow-Wang two-sided variable selection.
+    JeroslowWangTwoSided(JeroslowWangTwoSided),
+}
+
+impl<L: Literal> VariableSelection<L> for VariableSelectionImpls {
+    fn new<C: AsRef<[L]>>(num_vars: usize, lits: &[L], clauses: &[C]) -> Self {
+        Self::VSIDS(Vsids::<false>::new(num_vars, lits, clauses))
+    }
+
+    fn pick<A: Assignment>(&mut self, assignment: &A) -> Option<L> {
+        match self {
+            Self::VSIDS(vsids) => vsids.pick(assignment),
+            Self::VsidsHeap(vsids_heap) => vsids_heap.pick(assignment),
+            Self::FixedOrder(fixed_order) => fixed_order.pick(assignment),
+            Self::RandomOrder(random_order) => random_order.pick(assignment),
+            Self::JeroslowWangOneSided(jw_one_sided) => jw_one_sided.pick(assignment),
+            Self::JeroslowWangTwoSided(jw_two_sided) => jw_two_sided.pick(assignment),
+        }
+    }
+
+    fn bumps<T: IntoIterator<Item = L>>(&mut self, vars: T) {
+        match self {
+            Self::VSIDS(vsids) => vsids.bumps(vars),
+            Self::VsidsHeap(vsids_heap) => vsids_heap.bumps(vars),
+            Self::FixedOrder(fixed_order) => fixed_order.bumps(vars),
+            Self::RandomOrder(random_order) => random_order.bumps(vars),
+            Self::JeroslowWangOneSided(jw_one_sided) => jw_one_sided.bumps(vars),
+            Self::JeroslowWangTwoSided(jw_two_sided) => jw_two_sided.bumps(vars),
+        }
+    }
+
+    fn decay(&mut self, decay: f64) {
+        match self {
+            Self::VSIDS(vsids) => <Vsids as VariableSelection<L>>::decay(vsids, decay),
+            Self::VsidsHeap(vsids_heap) => {
+                <VsidsHeap as VariableSelection<L>>::decay(vsids_heap, decay);
+            }
+            Self::FixedOrder(fixed_order) => {
+                <FixedOrder as VariableSelection<L>>::decay(fixed_order, decay);
+            }
+            Self::RandomOrder(random_order) => {
+                <RandomOrder as VariableSelection<L>>::decay(random_order, decay);
+            }
+            Self::JeroslowWangOneSided(jw_one_sided) => {
+                <JeroslowWangOneSided as VariableSelection<L>>::decay(jw_one_sided, decay);
+            }
+            Self::JeroslowWangTwoSided(jw_two_sided) => {
+                <JeroslowWangTwoSided as VariableSelection<L>>::decay(jw_two_sided, decay);
+            }
+        }
+    }
+
+    fn decisions(&self) -> usize {
+        match self {
+            Self::VSIDS(vsids) => <Vsids as VariableSelection<L>>::decisions(vsids),
+            Self::VsidsHeap(vsids_heap) => {
+                <VsidsHeap as VariableSelection<L>>::decisions(vsids_heap)
+            }
+            Self::FixedOrder(fixed_order) => {
+                <FixedOrder as VariableSelection<L>>::decisions(fixed_order)
+            }
+            Self::RandomOrder(random_order) => {
+                <RandomOrder as VariableSelection<L>>::decisions(random_order)
+            }
+            Self::JeroslowWangOneSided(jw_one_sided) => {
+                <JeroslowWangOneSided as VariableSelection<L>>::decisions(jw_one_sided)
+            }
+            Self::JeroslowWangTwoSided(jw_two_sided) => {
+                <JeroslowWangTwoSided as VariableSelection<L>>::decisions(jw_two_sided)
+            }
+        }
+    }
+}
+
+/// Enum representing different variable selection strategies.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, PartialOrd, Ord, Hash, Default, ValueEnum)]
+pub enum VariableSelectionType {
+    /// VSIDS (Variable State Independent Decaying Sum) selection strategy.
+    #[default]
+    Vsids,
+    /// VSIDS with a binary heap for efficient selection.
+    VsidsHeap,
+    /// Fixed order selection strategy, iterating through variables in a fixed order.
+    FixedOrder,
+    /// Random order selection strategy, picking variables in a random order.
+    RandomOrder,
+    /// Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths.
+    JeroslowWangOneSided,
+    /// Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities.
+    JeroslowWangTwoSided,
+}
+
+impl Display for VariableSelectionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Vsids => write!(f, "vsids"),
+            Self::VsidsHeap => write!(f, "vsids_heap"),
+            Self::FixedOrder => write!(f, "fixed_order"),
+            Self::RandomOrder => write!(f, "random_order"),
+            Self::JeroslowWangOneSided => write!(f, "jw_one_sided"),
+            Self::JeroslowWangTwoSided => write!(f, "jw_two_sided"),
+        }
+    }
+}
+
+impl VariableSelectionType {
+    /// Converts the `VariableSelectionType` into a concrete implementation of `VariableSelection`.
+    pub fn to_impl<L: Literal>(
+        self,
+        num_vars: usize,
+        lits: &[L],
+        clauses: &[impl AsRef<[L]>],
+    ) -> VariableSelectionImpls {
+        match self {
+            Self::Vsids => {
+                VariableSelectionImpls::VSIDS(Vsids::<false>::new(num_vars, lits, clauses))
+            }
+            Self::VsidsHeap => {
+                VariableSelectionImpls::VsidsHeap(VsidsHeap::new(num_vars, lits, clauses))
+            }
+            Self::FixedOrder => {
+                VariableSelectionImpls::FixedOrder(FixedOrder::new(num_vars, lits, clauses))
+            }
+            Self::RandomOrder => {
+                VariableSelectionImpls::RandomOrder(RandomOrder::new(num_vars, lits, clauses))
+            }
+            Self::JeroslowWangOneSided => VariableSelectionImpls::JeroslowWangOneSided(
+                JeroslowWangOneSided::new(num_vars, lits, clauses),
+            ),
+            Self::JeroslowWangTwoSided => VariableSelectionImpls::JeroslowWangTwoSided(
+                JeroslowWangTwoSided::new(num_vars, lits, clauses),
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -879,7 +1029,7 @@ mod tests {
     //     let selector = JeroslowWangOneSided::new(num_problem_vars , &EMPTY_LITS_SLICE, &clauses);
     //     test_selector_behavior(selector, num_problem_vars, num_problem_vars);
     // }
-    // 
+    //
     // #[test]
     // fn test_jeroslow_wang_two_sided() {
     //     let clauses = vec![clause(&[1, 2]), clause(&[-1, 3]), clause(&[2])];
@@ -929,7 +1079,10 @@ mod tests {
         selector.bumps(std::iter::once(lit_to_bump));
         let score_before_decay_and_rescale = selector.scores[lit_to_bump.index()];
         assert!(
-            VSIDS_RESCALE_THRESHOLD.mul_add(-2.0, score_before_decay_and_rescale).abs() < 1e-9,
+            VSIDS_RESCALE_THRESHOLD
+                .mul_add(-2.0, score_before_decay_and_rescale)
+                .abs()
+                < 1e-9,
         );
 
         <VsidsHeap as VariableSelection<TestLiteral>>::decay(&mut selector, 2.0);

@@ -14,8 +14,8 @@ use bit_vec::BitVec;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
+use rustc_hash::{FxBuildHasher, FxHashSet};
 use smallvec::SmallVec;
-use std::collections::HashSet;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
@@ -64,6 +64,11 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
     /// Creates a new clause from an iterator of literals.
     ///
     /// The literals from the iterator are collected into the `literals` field.
+    ///
+    /// Literals are deduplicated during creation using `itertools::Itertools::unique`.
+    /// For example, `[L1, L1, L2]` becomes `{L1, L2}`.
+    ///
+    /// The clause is initialised as not learnt, not deleted, with LBD 0 and activity 0.0.
     /// Other fields (`lbd`, `deleted`, `is_learnt`, `activity`) are initialised to default values.
     fn from_iter<I: IntoIterator<Item = L>>(iter: I) -> Self {
         Self {
@@ -79,10 +84,6 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
 
 impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// Creates a new clause from a slice of literals.
-    ///
-    /// Literals are deduplicated during creation using `itertools::Itertools::unique`.
-    /// For example, `[L1, L1, L2]` becomes `{L1, L2}`.
-    /// The clause is initialised as not learnt, not deleted, with LBD 0 and activity 0.0.
     ///
     /// # Arguments
     ///
@@ -124,7 +125,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
             return self.clone();
         }
 
-        let mut resolved_literals: HashSet<L> = HashSet::new();
+        let mut resolved_literals: FxHashSet<L> = FxHashSet::default();
 
         for &lit in self.literals.iter() {
             if lit != pivot {
@@ -239,7 +240,7 @@ impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
     /// `true` if the clause is a tautology, `false` otherwise.
     #[must_use]
     pub fn is_tautology(&self) -> bool {
-        let mut set = HashSet::with_capacity(self.len());
+        let mut set = FxHashSet::with_capacity_and_hasher(self.len(), FxBuildHasher);
 
         for lit_ref in self.literals.iter() {
             let lit = *lit_ref;
@@ -497,42 +498,25 @@ impl<T: Literal, S: LiteralStorage<T>> From<&Clause<T, S>> for Vec<T> {
     ///
     /// The literals are copied from the clause's internal storage into a new `Vec<T>`.
     fn from(clause: &Clause<T, S>) -> Self {
-        clause.literals.iter().copied().collect_vec()
+        clause.literals.iter().copied().collect()
     }
 }
 
-impl<T: Literal + Eq + Hash, S: LiteralStorage<T>> From<Vec<i32>> for Clause<T, S> {
+impl<L: Literal + Eq + Hash, S: LiteralStorage<L>> From<Vec<i32>> for Clause<L, S> {
     /// Creates a clause from a `Vec<i32>`, where integers represent literals
     /// in DIMACS format (e.g. `1` for variable 1 true, `-2` for variable 2 false).
     ///
     /// This constructor uses `Clause::new`, so literals will be deduplicated.
     /// Other fields (`lbd`, `deleted`, etc.) are initialised to defaults.
     fn from(literals_dimacs: Vec<i32>) -> Self {
-        let literals_t = literals_dimacs
-            .iter()
-            .map(|&l_dimacs| {
-                let polarity = l_dimacs.is_positive();
-                let var_id = l_dimacs.unsigned_abs();
-                T::new(var_id, polarity)
-            })
-            .collect_vec();
-
-        Self::new(&literals_t)
+        literals_dimacs.iter().copied().map(L::from_i32).collect()
     }
 }
 
 impl<L: Literal, S: LiteralStorage<L>> From<Vec<L>> for Clause<L, S> {
     /// Creates a clause directly from a `Vec<L>`.
-    ///
     fn from(literals_vec: Vec<L>) -> Self {
-        Self {
-            literals: S::from(literals_vec),
-            lbd: 0,
-            deleted: false,
-            is_learnt: false,
-            activity: OrderedFloat::from(0.0),
-            data: PhantomData,
-        }
+        literals_vec.into_iter().collect()
     }
 }
 
@@ -541,14 +525,7 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
     ///
     /// The literals from `literals_vec` are cloned to create the `literals` field.
     fn from(literals_vec: &Vec<L>) -> Self {
-        Self {
-            literals: S::from(literals_vec.iter().unique().copied().collect_vec()),
-            lbd: 0,
-            deleted: false,
-            is_learnt: false,
-            activity: OrderedFloat::from(0.0),
-            data: PhantomData,
-        }
+        literals_vec.iter().copied().collect()
     }
 }
 
@@ -558,16 +535,7 @@ impl<L: Literal + Eq + Hash, S: LiteralStorage<L>> FromIterator<i32> for Clause<
     /// This is similar to `From<Vec<i32>>`. Literals are converted from DIMACS format.
     /// See `From<Vec<i32>>` for more details on DIMACS conversion and variable indexing.
     fn from_iter<I: IntoIterator<Item = i32>>(iter: I) -> Self {
-        let literals_t: Vec<L> = iter
-            .into_iter()
-            .map(|l_dimacs| {
-                let polarity = l_dimacs.is_positive();
-                let var_id = l_dimacs.unsigned_abs();
-                L::new(var_id, polarity)
-            })
-            .collect_vec();
-
-        Self::new(&literals_t)
+        iter.into_iter().map(L::from_i32).collect()
     }
 }
 
@@ -635,14 +603,18 @@ mod tests {
             2,
             "Resolved clause should have 2 literals"
         );
-        assert!(resolved_clause
-            .literals
-            .iter()
-            .any(|&l| l == PackedLiteral::new(2_u32, true)));
-        assert!(resolved_clause
-            .literals
-            .iter()
-            .any(|&l| l == PackedLiteral::new(3_u32, true)));
+        assert!(
+            resolved_clause
+                .literals
+                .iter()
+                .any(|&l| l == PackedLiteral::new(2_u32, true))
+        );
+        assert!(
+            resolved_clause
+                .literals
+                .iter()
+                .any(|&l| l == PackedLiteral::new(3_u32, true))
+        );
     }
 
     #[test]

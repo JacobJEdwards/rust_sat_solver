@@ -78,7 +78,7 @@
 //! -   `-p, --print-solution`: Enable printing of the solution model (default: `false`).
 //! -   `-s, --solver <SOLVER_NAME>`: Solver type. Can be `cdcl` or `dpll` (default: `cdcl`).
 //!
-//! ## Example Invocations
+//! ## Example Uses
 //!
 //! ```sh
 //! # Solve a DIMACS file using the default CDCL solver
@@ -101,15 +101,22 @@
 //! and orchestrates the solving process based on user input.
 //! It uses modules `sat`, `sudoku`, and `nonogram` for specialised logic.
 
+use crate::sat::assignment::{AssignmentImpls, AssignmentType};
 use crate::sat::cdcl::Cdcl;
+use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls, LiteralStorageType};
 use crate::sat::cnf::Cnf;
 use crate::sat::dimacs::parse_file;
 use crate::sat::dpll::Dpll;
-use crate::sat::solver::{DefaultConfig, SolutionStats, Solutions, Solver};
+use crate::sat::literal::{Literal, LiteralImpls, LiteralType};
+use crate::sat::propagation::{PropagatorImpls, PropagatorType};
+use crate::sat::restarter::{RestarterImpls, RestarterType};
+use crate::sat::solver::{DynamicConfig, SolutionStats, Solutions, Solver, SolverImpls, SolverType};
+use crate::sat::variable_selection::{VariableSelectionImpls, VariableSelectionType};
 use clap::{Args, Parser, Subcommand};
 use itertools::Itertools;
 use std::time::Duration;
 use tikv_jemalloc_ctl::{epoch, stats};
+use crate::sat::clause_management::{ClauseManagement, ClauseManagementImpls, LbdClauseManagement, NoClauseManagement};
 
 mod nonogram;
 mod sat;
@@ -146,7 +153,7 @@ enum Commands {
     /// Solve a CNF file in DIMACS format.
     File {
         /// Path to the DIMACS .cnf file.
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
 
         /// Common options for this subcommand.
@@ -170,7 +177,7 @@ enum Commands {
     /// The Sudoku puzzle is converted into a CNF formula, which is then solved.
     Sudoku {
         /// Path to the Sudoku file. The format of this file is defined by the `sudoku::solver::parse_sudoku_file` function.
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
 
         /// If true, the generated DIMACS CNF representation of the Sudoku puzzle will be printed and saved to a file.
@@ -186,7 +193,7 @@ enum Commands {
     /// The Nonogram puzzle is converted into a CNF formula, which is then solved.
     Nonogram {
         /// Path to the Nonogram file. The format of this file is defined by the `nonogram::solver::parse_nonogram_file` function.
-        #[arg(short, long)]
+        #[arg(long)]
         path: String,
 
         /// Common options for this subcommand.
@@ -216,8 +223,77 @@ struct CommonOptions {
 
     /// Specifies the SAT solver algorithm to use.
     /// Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland).
-    #[arg(short, long, default_value_t = String::from("cdcl"))]
-    solver: String,
+    #[arg(long, default_value_t = SolverType::Cdcl)]
+    solver: SolverType,
+
+    /// Disable clause management, which may affect the solver's performance and memory usage.
+    #[arg(short, long, default_value_t = false)]
+    no_clause_management: bool,
+
+    #[arg(long, default_value_t = RestarterType::Luby)]
+    restart_strategy: RestarterType,
+
+    #[arg(long, default_value_t = VariableSelectionType::Vsids)]
+    variable_selection: VariableSelectionType,
+
+    #[arg(long, default_value_t = LiteralStorageType::SmallVec)]
+    literal_storage: LiteralStorageType,
+
+    #[arg(long, default_value_t = AssignmentType::Vec)]
+    assignment: AssignmentType,
+
+    #[arg(long, default_value_t = PropagatorType::WatchedLiterals)]
+    propagator: PropagatorType,
+
+    #[arg(long, default_value_t = LiteralType::Double)]
+    literals: LiteralType,
+}
+
+/// Converts the `CommonOptions` into the specific implementations required by the solver.
+fn get_solver_parts<L: Literal, S: LiteralStorage<L>>(
+    common: &CommonOptions,
+    cnf: &Cnf<L, S>,
+) -> (
+    AssignmentImpls,
+    ClauseManagementImpls<10>,
+    PropagatorImpls<LiteralImpls, LiteralStorageImpls<LiteralImpls, 12>, AssignmentImpls>,
+    VariableSelectionImpls,
+    RestarterImpls<3>,
+) {
+    let manager = if common.no_clause_management {
+        ClauseManagementImpls::NoClauseManagement(NoClauseManagement::new(&cnf.clauses))
+    } else {
+        ClauseManagementImpls::LbdActivityClauseManagement(LbdClauseManagement::new(&cnf.clauses))
+    };
+    let cnf1: Cnf<LiteralImpls, LiteralStorageImpls<LiteralImpls, 12>> = cnf.convert();
+    let propagator = common.propagator.to_impl(&cnf1);
+
+    (
+        common.assignment.to_impl(cnf.num_vars),
+        manager,
+        propagator,
+        common
+            .variable_selection
+            .to_impl(cnf.num_vars, &cnf.lits, &cnf.clauses),
+        common.restart_strategy.to_impl(),
+    )
+}
+
+fn get_solver<L: Literal, S: LiteralStorage<L>>(
+    common: &CommonOptions,
+    cnf: Cnf<L, S>,
+) -> SolverImpls<DynamicConfig> {
+    let (assignment, manager, propagator, selector, restarter) =
+        get_solver_parts(common, &cnf);
+
+    match common.solver {
+        SolverType::Cdcl => {
+            SolverImpls::Cdcl(Box::from(Cdcl::<DynamicConfig>::from_parts(cnf.clone(), assignment, manager, propagator, restarter, selector)))
+        }
+        SolverType::Dpll => {
+            SolverImpls::Dpll(Box::from(Dpll::<DynamicConfig>::from_parts(cnf.clone(), assignment, manager, propagator, restarter, selector)))
+        }
+    }
 }
 
 /// Main entry point of the SATSolver application.
@@ -287,9 +363,10 @@ fn main() {
 
                     let parse_time = time.elapsed();
                     let (sol, elapsed, solver_stats) =
-                        solve(cnf.clone(), common.debug, Some(&path), &common.solver);
+                        solve(cnf.clone(), common.debug, Some(&path), &common);
 
                     epoch::advance().unwrap();
+
                     let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
                     let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
                     let allocated_mib = allocated_bytes as f64 / (1024.0 * 1024.0);
@@ -335,7 +412,7 @@ fn main() {
 
                     let parse_time = time.elapsed();
                     let (sol, elapsed, solver_stats) =
-                        solve(cnf.clone(), common.debug, Some(&path), &common.solver);
+                        solve(cnf.clone(), common.debug, Some(&path), &common);
 
                     epoch::advance().unwrap();
                     let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
@@ -363,7 +440,7 @@ fn main() {
                     if let Some(sol_values) = sol {
                         let solution_grid = nonogram.decode(&sol_values);
                         for row in solution_grid.iter() {
-                            println!("{:?}", row); 
+                            println!("{:?}", row);
                         }
                     } else {
                         println!("No solution found");
@@ -423,7 +500,7 @@ fn solve(
     cnf: Cnf,
     debug: bool,
     label: Option<&str>,
-    solver_name: &str,
+    common_options: &CommonOptions,
 ) -> (Option<Solutions>, Duration, SolutionStats) {
     if let Some(name) = label {
         println!("Solving: {:?}", name);
@@ -436,11 +513,7 @@ fn solve(
         println!("Literals: {}", cnf.lits.len());
     }
 
-    match solver_name.to_lowercase().as_str() {
-        "dpll" => solve_dpll(cnf, debug),
-        "cdcl" => solve_cdcl(cnf, debug),
-        _ => panic!("Unknown solver name {}", solver_name),
-    }
+    solve_impl(cnf, common_options)
 }
 
 /// Solves a CNF formula using the CDCL solver.
@@ -451,43 +524,17 @@ fn solve(
 ///
 /// # Returns
 /// See `solve` function return type.
-fn solve_cdcl(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionStats) {
+fn solve_impl(cnf: Cnf, common_options: &CommonOptions) -> (Option<Solutions>, Duration, SolutionStats) {
     epoch::advance().unwrap();
 
     let time = std::time::Instant::now();
 
-    let mut solver = Cdcl::<DefaultConfig>::new(cnf);
+    let mut solver = get_solver(common_options, cnf);
     let sol = solver.solve();
 
     let elapsed = time.elapsed();
 
-    if debug {
-        println!("Solution: {:?}", sol);
-        println!("Time: {:?}", elapsed);
-    }
-
-    (sol, elapsed, solver.stats())
-}
-
-/// Solves a CNF formula using the DPLL solver.
-///
-/// # Arguments
-/// * `cnf` - The CNF formula to solve.
-/// * `debug` - Boolean flag to enable debug printing.
-///
-/// # Returns
-/// See `solve` function return type.
-fn solve_dpll(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionStats) {
-    epoch::advance().unwrap();
-
-    let time = std::time::Instant::now();
-
-    let mut solver = Dpll::<DefaultConfig>::new(cnf);
-    let sol = solver.solve();
-
-    let elapsed = time.elapsed();
-
-    if debug {
+    if common_options.debug {
         println!("Solution: {:?}", sol);
         println!("Time: {:?}", elapsed);
     }
@@ -507,7 +554,7 @@ fn solve_dpll(cnf: Cnf, debug: bool) -> (Option<Solutions>, Duration, SolutionSt
 fn solve_and_report(cnf: Cnf, common: CommonOptions, label: Option<&str>, parse_time: Duration) {
     epoch::advance().unwrap();
 
-    let (sol, elapsed, solver_stats) = solve(cnf.clone(), common.debug, label, &common.solver);
+    let (sol, elapsed, solver_stats) = solve(cnf.clone(), common.debug, label, &common);
 
     epoch::advance().unwrap();
 
@@ -620,7 +667,7 @@ fn print_stats(
         },
     );
     stat_line("Clauses (original)", cnf.non_learnt_idx);
-    stat_line("Literals (original)", cnf.lits.len()); 
+    stat_line("Literals (original)", cnf.lits.len());
 
     println!("========================[ Search Statistics ]========================");
     stat_line("Learnt clauses", s.learnt_clauses);

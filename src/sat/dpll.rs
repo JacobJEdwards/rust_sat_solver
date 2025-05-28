@@ -24,6 +24,7 @@
 //! Was a near direct translation of the original Haskell implementation
 
 use crate::sat::assignment::Assignment;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf;
 use crate::sat::cnf::Cnf;
 use crate::sat::literal::Literal;
@@ -70,7 +71,9 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
     /// A new `Dpll` instance initialised with the provided formula and
     /// default components (propagator, assignment tracker, trail, variable selector)
     /// based on the `Config`.
-    fn new(cnf: Cnf<Config::Literal, Config::LiteralStorage>) -> Self {
+    fn new<L: Literal, S: LiteralStorage<L>>(cnf: Cnf<L, S>) -> Self {
+        let cnf = cnf.convert();
+
         let lits = &cnf.lits;
         let propagator = Propagator::new(&cnf);
         let assignment = Assignment::new(cnf.num_vars);
@@ -84,6 +87,27 @@ impl<Config: SolverConfig + Clone> Solver<Config> for Dpll<Config> {
             cnf,
             selector,
             propagator,
+        }
+    }
+
+    fn from_parts<L: Literal, S: LiteralStorage<L>>(
+        cnf: Cnf<L, S>,
+        assignment: Config::Assignment,
+        _manager: Config::ClauseManager,
+        propagator: Config::Propagator,
+        _restarter: Config::Restarter,
+        selector: Config::VariableSelector,
+    ) -> Self {
+        let cnf = cnf.convert();
+        let trail = Trail::new(&cnf.clauses, cnf.num_vars);
+
+        Self {
+            assignment,
+            propagator,
+            trail,
+            cnf,
+            selector,
+            decision_level: 0,
         }
     }
 

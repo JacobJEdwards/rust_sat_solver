@@ -299,7 +299,7 @@ impl Variable {
     #[must_use]
     pub const fn encode(&self, size: Size) -> usize {
         let board_size = size as usize;
-        let row = self.row; 
+        let row = self.row;
         let col = self.col;
         let num = self.num;
 
@@ -313,10 +313,10 @@ impl Size {
     #[must_use]
     pub const fn block_size(self) -> usize {
         match self {
-            Self::Four => 2,       
-            Self::Nine => 3,       
-            Self::Sixteen => 4,    
-            Self::TwentyFive => 5, 
+            Self::Four => 2,
+            Self::Nine => 3,
+            Self::Sixteen => 4,
+            Self::TwentyFive => 5,
         }
     }
 }
@@ -443,10 +443,10 @@ fn generate_pre_filled_clauses(size: usize, board: &Board) -> Vec<Vec<i32>> {
         for (c_idx, &n_val) in row_vec.iter().enumerate() {
             if n_val != 0 {
                 let var = Variable::new(r_idx + 1, c_idx + 1, n_val);
-                clauses.push(vec![i32::try_from(
-                    var.encode(Size::try_from(size).expect("Invalid size")),
-                )
-                .expect("Invalid variable")]);
+                clauses.push(vec![
+                    i32::try_from(var.encode(Size::try_from(size).expect("Invalid size")))
+                        .expect("Invalid variable"),
+                ]);
             }
         }
     }
@@ -654,9 +654,12 @@ pub fn parse_sudoku(sudoku: &str) -> Result<Sudoku, String> {
         }
         for (j, c) in line.split_ascii_whitespace().enumerate() {
             if j >= size {
-                return Err(format!("Invalid Sudoku: Too many numbers in line {}", i + 1));
+                return Err(format!(
+                    "Invalid Sudoku: Too many numbers in line {}",
+                    i + 1
+                ));
             }
-            
+
             if let Ok(num) = c.parse::<usize>() {
                 if num > size {
                     return Err(format!("Invalid Sudoku: Number {num} exceeds size {size}"));

@@ -10,6 +10,7 @@
 use crate::sat::assignment::Assignment;
 use crate::sat::clause::Clause;
 use crate::sat::clause_management::ClauseManagement;
+use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::cnf::Cnf;
 use crate::sat::conflict_analysis::{Analyser, Conflict};
 use crate::sat::literal::Literal;
@@ -175,7 +176,9 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
     /// # Arguments
     ///
     /// * `cnf`: The Conjunctive Normal Form (CNF) formula to be solved.
-    fn new(cnf: Cnf<Config::Literal, Config::LiteralStorage>) -> Self {
+    fn new<L: Literal, S: LiteralStorage<L>>(cnf: Cnf<L, S>) -> Self {
+        let cnf = cnf.convert();
+
         let propagator = Propagator::new(&cnf);
         let vars = &cnf.lits;
         let selector = Config::VariableSelector::new(cnf.num_vars, vars, &cnf.clauses);
@@ -193,6 +196,30 @@ impl<Config: SolverConfig> Solver<Config> for Cdcl<Config> {
             decision_level: 0,
             conflict_analysis,
             manager,
+        }
+    }
+
+    fn from_parts<L: Literal, S: LiteralStorage<L>>(
+        cnf: Cnf<L, S>,
+        assignment: Config::Assignment,
+        manager: Config::ClauseManager,
+        propagator: Config::Propagator,
+        restarter: Config::Restarter,
+        selector: Config::VariableSelector,
+    ) -> Self {
+        let cnf = cnf.convert();
+        let conflict_analysis = Analyser::new(cnf.num_vars);
+
+        Self {
+            trail: Trail::new(&cnf.clauses, cnf.num_vars),
+            assignment,
+            propagator,
+            cnf,
+            selector,
+            conflict_analysis,
+            restarter,
+            manager,
+            decision_level: 0,
         }
     }
 

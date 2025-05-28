@@ -206,7 +206,12 @@ fn generate_line_clauses(
         );
 
         if possible_patterns.is_empty() {
-            println!("Warning: No possible patterns found for {} {} with constraints {:?}. Puzzle might be unsatisfiable.", if is_row {"Row"} else {"Col"}, i, constraint);
+            println!(
+                "Warning: No possible patterns found for {} {} with constraints {:?}. Puzzle might be unsatisfiable.",
+                if is_row { "Row" } else { "Col" },
+                i,
+                constraint
+            );
             clauses.push(vec![]);
             continue;
         }
@@ -334,7 +339,8 @@ fn generate_recursive(
             }
         }
         if !possible {
-            current_pattern[start_pos..pos].copy_from_slice(&original_pattern_slice[(start_pos - pos)..0]);
+            current_pattern[start_pos..pos]
+                .copy_from_slice(&original_pattern_slice[(start_pos - pos)..0]);
             continue;
         }
 
@@ -373,7 +379,6 @@ fn generate_recursive(
             }
         }
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

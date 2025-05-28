@@ -26,9 +26,10 @@ use crate::sat::literal::Literal;
 use crate::sat::literal::Variable;
 use crate::sat::preprocessing::PureLiteralElimination;
 use crate::sat::trail::{Reason, Trail};
+use clap::ValueEnum;
 use itertools::Itertools;
 use smallvec::SmallVec;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
@@ -202,13 +203,13 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
     /// /// This method iterates through the provided indices and processes each clause
     /// using `process_clause`. If a clause is found to be falsified, it returns the index
     /// of that clause.
-    /// 
+    ///
     /// # Arguments
     /// * `indices`: A slice of indices representing the clauses to process.
     /// * `trail`: A mutable reference to the `Trail` where new propagations are added.
     /// * `assignment`: A reference to the current `Assignment` state.
     /// * `cnf`: A mutable reference to the `Cnf` formula containing the clauses.
-    /// 
+    ///
     /// # Returns
     /// * `Some(usize)`: If a clause is found to be falsified, returns the index of that clause.
     /// * `None`: If no clauses are falsified, returns `None`.
@@ -232,16 +233,16 @@ impl<L: Literal, S: LiteralStorage<L> + Debug, A: Assignment, const N: usize>
     /// - If the first literal is unassigned, it is handled by calling `handle_false`.
     /// - If the second literal is unassigned, it is swapped with the first literal,
     ///   and `handle_false` is called for the second literal.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `clause_idx`: The index of the clause to process.
     /// * `trail`: A mutable reference to the `Trail` where new propagations are added.
     /// * `assignment`: A reference to the current `Assignment` state.
     /// * `cnf`: A mutable reference to the `Cnf` formula containing the clauses.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Some(usize)`: If the clause is found to be falsified, returns the index of that clause.
     /// * `None`: If the clause is satisfied or not falsified, returns `None`.
     pub fn process_clause(
@@ -580,6 +581,105 @@ impl<L: Literal, S: LiteralStorage<L>, A: Assignment> UnitPropagationWithPureLit
         for &lit in &pures {
             if assignment.var_value(lit.variable()).is_none() {
                 Self::add_propagation(lit, 0, trail);
+            }
+        }
+    }
+}
+
+/// Enum representing different propagator implementations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PropagatorImpls<L: Literal, S: LiteralStorage<L>, A: Assignment> {
+    /// Watched literals propagator.
+    WatchedLiterals(WatchedLiterals<L, S, A>),
+    /// Unit search propagator.
+    UnitSearch(UnitSearch<L, S, A>),
+    /// Unit propagation with pure literals propagator.
+    UnitPropagationWithPureLiterals(UnitPropagationWithPureLiterals<L, S, A>),
+}
+
+impl<L: Literal, S: LiteralStorage<L>, A: Assignment> Propagator<L, S, A>
+    for PropagatorImpls<L, S, A>
+{
+    fn new(cnf: &Cnf<L, S>) -> Self {
+        Self::WatchedLiterals(WatchedLiterals::new(cnf))
+    }
+
+    fn add_clause(&mut self, clause: &Clause<L, S>, idx: usize) {
+        match self {
+            Self::WatchedLiterals(wl) => wl.add_clause(clause, idx),
+            Self::UnitSearch(us) => us.add_clause(clause, idx),
+            Self::UnitPropagationWithPureLiterals(up) => up.add_clause(clause, idx),
+        }
+    }
+
+    fn propagate(
+        &mut self,
+        trail: &mut Trail<L, S>,
+        assignment: &mut A,
+        cnf: &mut Cnf<L, S>,
+    ) -> Option<usize> {
+        match self {
+            Self::WatchedLiterals(wl) => wl.propagate(trail, assignment, cnf),
+            Self::UnitSearch(us) => us.propagate(trail, assignment, cnf),
+            Self::UnitPropagationWithPureLiterals(up) => up.propagate(trail, assignment, cnf),
+        }
+    }
+
+    fn num_propagations(&self) -> usize {
+        match self {
+            Self::WatchedLiterals(wl) => wl.num_propagations(),
+            Self::UnitSearch(us) => us.num_propagations(),
+            Self::UnitPropagationWithPureLiterals(up) => up.num_propagations(),
+        }
+    }
+
+    fn cleanup_learnt(&mut self, learnt_idx: usize) {
+        match self {
+            Self::WatchedLiterals(wl) => wl.cleanup_learnt(learnt_idx),
+            Self::UnitSearch(us) => us.cleanup_learnt(learnt_idx),
+            Self::UnitPropagationWithPureLiterals(up) => up.cleanup_learnt(learnt_idx),
+        }
+    }
+}
+
+/// Enum representing the type of propagator to use in the SAT solver.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default, ValueEnum)]
+pub enum PropagatorType {
+    /// Watched literals propagator, which uses the watched literals scheme for efficient unit propagation.
+    #[default]
+    WatchedLiterals,
+    /// Unit search propagator, which iterates through clauses to find unit clauses.
+    UnitSearch,
+    /// Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals.
+    UnitPropagationWithPureLiterals,
+}
+
+impl Display for PropagatorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WatchedLiterals => write!(f, "watched-literals"),
+            Self::UnitSearch => write!(f, "unit-search"),
+            Self::UnitPropagationWithPureLiterals => {
+                write!(f, "unit-propagation-with-pure-literals")
+            }
+        }
+    }
+}
+
+impl PropagatorType {
+    /// Converts the `PropagatorType` to a specific propagator implementation.
+    #[must_use]
+    pub fn to_impl<L: Literal, S: LiteralStorage<L>, A: Assignment>(
+        &self,
+        cnf: &Cnf<L, S>,
+    ) -> PropagatorImpls<L, S, A> {
+        match self {
+            Self::WatchedLiterals => PropagatorImpls::WatchedLiterals(WatchedLiterals::new(cnf)),
+            Self::UnitSearch => PropagatorImpls::UnitSearch(UnitSearch::new(cnf)),
+            Self::UnitPropagationWithPureLiterals => {
+                PropagatorImpls::UnitPropagationWithPureLiterals(
+                    UnitPropagationWithPureLiterals::new(cnf),
+                )
             }
         }
     }

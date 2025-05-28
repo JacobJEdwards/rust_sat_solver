@@ -19,7 +19,8 @@
 //!     (e.g. `x` as `variable_id`, `!x` as `-variable_id`).
 //! - A utility function `convert` to transform a literal of one type into another.
 
-use std::fmt::Debug;
+use clap::ValueEnum;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 /// Type alias for representing a propositional variable identifier.
@@ -338,6 +339,105 @@ pub fn convert<T: Literal, U: Literal>(lit: &T) -> U {
     U::new(var, polarity)
 }
 
+/// Represents a literal that can be one of several implementations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LiteralImpls {
+    /// A packed literal using bit manipulation for memory efficiency.
+    Packed(PackedLiteral),
+    /// A struct-based literal with separate fields for variable and polarity.
+    Struct(StructLiteral),
+    /// A double literal represented as `2*variable + polarity_bit`.
+    Double(DoubleLiteral),
+    /// A negative literal represented as a signed integer (DIMACS-style).
+    Negative(NegativeLiteral),
+}
+
+impl Default for LiteralImpls {
+    fn default() -> Self {
+        Self::Double(DoubleLiteral::default())
+    }
+}
+
+impl Literal for LiteralImpls {
+    fn new(var: Variable, polarity: bool) -> Self {
+        Self::Packed(PackedLiteral::new(var, polarity))
+    }
+
+    fn variable(self) -> Variable {
+        match self {
+            Self::Packed(lit) => lit.variable(),
+            Self::Struct(lit) => lit.variable(),
+            Self::Double(lit) => lit.variable(),
+            Self::Negative(lit) => lit.variable(),
+        }
+    }
+
+    fn polarity(self) -> bool {
+        match self {
+            Self::Packed(lit) => lit.polarity(),
+            Self::Struct(lit) => lit.polarity(),
+            Self::Double(lit) => lit.polarity(),
+            Self::Negative(lit) => lit.polarity(),
+        }
+    }
+
+    fn negated(self) -> Self {
+        match self {
+            Self::Packed(lit) => Self::Packed(lit.negated()),
+            Self::Struct(lit) => Self::Struct(lit.negated()),
+            Self::Double(lit) => Self::Double(lit.negated()),
+            Self::Negative(lit) => Self::Negative(lit.negated()),
+        }
+    }
+}
+
+/// Represents the type of literal implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, ValueEnum)]
+pub enum LiteralType {
+    /// A packed literal using bit manipulation for memory efficiency.
+    Packed,
+    /// A struct-based literal with separate fields for variable and polarity.
+    Struct,
+    /// A double literal represented as `2*variable + polarity_bit`.
+    #[default]
+    Double,
+    /// A negative literal represented as a signed integer (DIMACS-style).
+    Negative,
+}
+
+impl Display for LiteralType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Packed => write!(f, "packed"),
+            Self::Struct => write!(f, "struct"),
+            Self::Double => write!(f, "double"),
+            Self::Negative => write!(f, "negative"),
+        }
+    }
+}
+
+impl LiteralType {
+    /// Converts a `LiteralType` to its corresponding `Literal` implementation.
+    ///
+    /// # Arguments
+    ///
+    /// * `var`: The variable identifier for the literal.
+    /// * `polarity`: The polarity of the literal (true for positive, false for negative).
+    ///
+    /// # Returns
+    ///
+    /// A new literal of the specified type.
+    #[must_use]
+    pub fn to_impl(self, var: Variable, polarity: bool) -> LiteralImpls {
+        match self {
+            Self::Packed => LiteralImpls::Packed(PackedLiteral::new(var, polarity)),
+            Self::Struct => LiteralImpls::Struct(StructLiteral::new(var, polarity)),
+            Self::Double => LiteralImpls::Double(DoubleLiteral::new(var, polarity)),
+            Self::Negative => LiteralImpls::Negative(NegativeLiteral::new(var, polarity)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,7 +489,10 @@ mod tests {
 
         let i32_val = lit.to_i32();
         let lit_from_i32 = L::from_i32(i32_val);
-        assert_eq!(lit_from_i32, lit, "from_i32(to_i32(lit)) should be lit. Got: L={lit:?}, i32={i32_val}, L'={lit_from_i32:?}");
+        assert_eq!(
+            lit_from_i32, lit,
+            "from_i32(to_i32(lit)) should be lit. Got: L={lit:?}, i32={i32_val}, L'={lit_from_i32:?}"
+        );
 
         #[allow(
             clippy::cast_possible_truncation,

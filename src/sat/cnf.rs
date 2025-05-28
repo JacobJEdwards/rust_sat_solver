@@ -14,7 +14,7 @@
 #![allow(unsafe_code, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 use super::clause::Clause;
-use super::expr::{apply_laws, Expr};
+use super::expr::{Expr, apply_laws};
 use crate::sat::clause_storage::LiteralStorage;
 use crate::sat::literal;
 use crate::sat::literal::{Literal, PackedLiteral, Variable};
@@ -490,12 +490,16 @@ mod tests {
 
         let first_clause = &cnf.clauses[0];
         assert_eq!(first_clause.len(), 2);
-        assert!(first_clause
-            .iter()
-            .any(|l| l.variable() == 1_u32 && l.polarity()));
-        assert!(first_clause
-            .iter()
-            .any(|l| l.variable() == 2_u32 && !l.polarity()));
+        assert!(
+            first_clause
+                .iter()
+                .any(|l| l.variable() == 1_u32 && l.polarity())
+        );
+        assert!(
+            first_clause
+                .iter()
+                .any(|l| l.variable() == 2_u32 && !l.polarity())
+        );
     }
 
     #[test]

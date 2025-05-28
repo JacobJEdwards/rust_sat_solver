@@ -19,10 +19,11 @@
 
 use crate::sat::literal::{Literal, Variable};
 use crate::sat::solver::Solutions;
+use clap::ValueEnum;
 use core::ops::{Index, IndexMut};
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 /// Represents the assignment state of a propositional variable.
@@ -411,6 +412,120 @@ impl Assignment for HashMapAssignment {
 
     fn all_assigned(&self) -> bool {
         self.map.len() == self.num_vars && self.map.values().all(|v| v.is_assigned())
+    }
+}
+
+/// Defines an enumeration of the possible assignment types.
+/// Allows for a rough dynamic dispatch.
+#[derive(Clone, Debug)]
+pub enum AssignmentImpls {
+    /// Vec assignment wrapper
+    Vec(VecAssignment),
+
+    /// HashMap assignment wrapper
+    HashMap(HashMapAssignment),
+}
+
+impl Index<usize> for AssignmentImpls {
+    type Output = VarState;
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            Self::Vec(v) => v.index(index),
+            Self::HashMap(v) => v.index(index),
+        }
+    }
+}
+
+impl IndexMut<usize> for AssignmentImpls {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match self {
+            Self::Vec(v) => v.index_mut(index),
+            Self::HashMap(v) => v.index_mut(index),
+        }
+    }
+}
+
+impl Assignment for AssignmentImpls {
+    fn new(n_vars: usize) -> Self {
+        Self::Vec(VecAssignment::new(n_vars))
+    }
+
+    fn num_vars(&self) -> usize {
+        match self {
+            Self::Vec(v) => v.num_vars(),
+            Self::HashMap(v) => v.num_vars(),
+        }
+    }
+
+    fn set(&mut self, var: Variable, b: bool) {
+        match self {
+            Self::Vec(v) => v.set(var, b),
+            Self::HashMap(v) => v.set(var, b),
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            Self::Vec(v) => v.reset(),
+            Self::HashMap(v) => v.reset(),
+        }
+    }
+    fn unassign(&mut self, var: Variable) {
+        match self {
+            Self::Vec(v) => v.unassign(var),
+            Self::HashMap(v) => v.unassign(var),
+        }
+    }
+
+    fn get_solutions(&self) -> Solutions {
+        match self {
+            Self::Vec(v) => v.get_solutions(),
+            Self::HashMap(v) => v.get_solutions(),
+        }
+    }
+    fn all_assigned(&self) -> bool {
+        match self {
+            Self::Vec(v) => v.all_assigned(),
+            Self::HashMap(v) => v.all_assigned(),
+        }
+    }
+}
+
+/// An enumeration of the types of assignment implementations available.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default, Hash, ValueEnum)]
+pub enum AssignmentType {
+    /// Use a `Vec<VarState>` for dense variable sets.
+    #[default]
+    Vec,
+    /// Use an `FxHashMap<Variable, VarState>` for sparse or non-contiguous variable sets.
+    HashMap,
+}
+
+impl Display for AssignmentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Vec => write!(f, "vec"),
+            Self::HashMap => write!(f, "hash-map"),
+        }
+    }
+}
+
+impl AssignmentType {
+    /// Creates a new `Assignment` instance based on the specified type.
+    ///
+    /// # Arguments
+    ///
+    /// * `n_vars`: The number of variables to manage.
+    ///
+    /// # Returns
+    ///
+    /// An instance of `Assignment` based on the specified type.
+    #[must_use]
+    pub fn to_impl(self, n_vars: usize) -> AssignmentImpls {
+        match self {
+            Self::Vec => AssignmentImpls::Vec(VecAssignment::new(n_vars)),
+            Self::HashMap => AssignmentImpls::HashMap(HashMapAssignment::new(n_vars)),
+        }
     }
 }
 

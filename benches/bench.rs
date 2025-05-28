@@ -1,5 +1,8 @@
 use criterion::measurement::Measurement;
-use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion, /* Throughput, */};
+use criterion::{
+    BenchmarkGroup, Criterion, /* Throughput, */
+    criterion_group, criterion_main,
+};
 use itertools::Itertools;
 use sat_solver::sat::assignment::{Assignment, HashMapAssignment, VecAssignment};
 use sat_solver::sat::cdcl::Cdcl;
@@ -18,7 +21,7 @@ use sat_solver::sat::preprocessing::{
 };
 use sat_solver::sat::propagation::{Propagator, UnitSearch, WatchedLiterals};
 use sat_solver::sat::restarter::{Fixed, Geometric, Linear, Luby, Never, Restarter};
-use sat_solver::sat::solver::{solver_config, DefaultConfig, Solver, SolverConfig};
+use sat_solver::sat::solver::{DefaultConfig, Solver, SolverConfig, solver_config};
 use sat_solver::sat::variable_selection::{
     FixedOrder, JeroslowWangOneSided, JeroslowWangTwoSided, VariableSelection, Vsids, VsidsHeap,
 };

@@ -12,18 +12,19 @@
 //! - `DefaultConfig`: A pre-defined default solver configuration using common component choices.
 //! - `Solver`: A trait defining the general interface for a SAT solver.
 
-use crate::sat::assignment::VecAssignment;
-use crate::sat::clause_management::LbdClauseManagement;
+use crate::sat::assignment::{AssignmentImpls, VecAssignment};
+use crate::sat::clause_management::{ClauseManagementImpls, LbdClauseManagement};
 use crate::sat::cnf::Cnf;
-use crate::sat::literal::PackedLiteral;
-use crate::sat::propagation::WatchedLiterals;
-use crate::sat::restarter::Luby;
-use crate::sat::variable_selection::Vsids;
+use crate::sat::literal::{Literal, LiteralImpls, PackedLiteral};
+use crate::sat::propagation::{PropagatorImpls, WatchedLiterals};
+use crate::sat::restarter::{Luby, RestarterImpls};
+use crate::sat::variable_selection::{VariableSelectionImpls, Vsids};
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroI32;
+use clap::ValueEnum;
 
 /// Contains statistics about a SAT solver's execution.
 ///
@@ -137,17 +138,10 @@ pub trait SolverConfig: Debug + Clone {
     type Restarter: crate::sat::restarter::Restarter;
     /// The type used for the unit propagation mechanism (e.g. `WatchedLiterals`, `UnitSearch`).
     /// Must implement `crate::sat::propagation::Propagator`.
-    type Propagator: crate::sat::propagation::Propagator<
-        Self::Literal,
-        Self::LiteralStorage,
-        Self::Assignment,
-    >;
+    type Propagator: crate::sat::propagation::Propagator<Self::Literal, Self::LiteralStorage, Self::Assignment>;
     /// The type used for managing the clause database (e.g. `LbdClauseManagement`).
     /// Must implement `crate::sat::clause_management::ClauseManagement`.
-    type ClauseManager: crate::sat::clause_management::ClauseManagement<
-        Self::Literal,
-        Self::LiteralStorage,
-    >;
+    type ClauseManager: crate::sat::clause_management::ClauseManagement;
 }
 
 /// A macro to conveniently define a struct that implements `SolverConfig`.
@@ -214,7 +208,7 @@ pub trait SolverConfig: Debug + Clone {
 ///         Literal = L,
 ///         LiteralStorage = S,
 ///         Assignment = A,
-///         VariableSelector = Vsids<L>, 
+///         VariableSelector = Vsids<L>,
 ///         Propagator = WatchedLiterals<L, S, A>,
 ///         Restarter = Fixed<100>,
 ///         ClauseManager = NoClauseManagement<L, S>,
@@ -277,7 +271,10 @@ macro_rules! solver_config {
     };
 }
 
+use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls};
 pub use solver_config;
+use crate::sat::cdcl::Cdcl;
+use crate::sat::dpll::Dpll;
 
 solver_config!(
     DefaultConfig {
@@ -287,7 +284,19 @@ solver_config!(
         VariableSelector = Vsids,
         Propagator = WatchedLiterals<PackedLiteral, SmallVec<[PackedLiteral; 8]>, VecAssignment>,
         Restarter = Luby<2>,
-        ClauseManager = LbdClauseManagement<PackedLiteral, SmallVec<[PackedLiteral; 8]>, 10>,
+        ClauseManager = LbdClauseManagement<10>,
+    }
+);
+
+solver_config!(
+    DynamicConfig {
+        Literal = LiteralImpls,
+        LiteralStorage = LiteralStorageImpls<LiteralImpls, 12>,
+        Assignment = AssignmentImpls,
+        VariableSelector = VariableSelectionImpls,
+        Propagator = PropagatorImpls<LiteralImpls, LiteralStorageImpls<LiteralImpls, 12>, AssignmentImpls>,
+        Restarter = RestarterImpls<3>,
+        ClauseManager = ClauseManagementImpls<10>,
     }
 );
 
@@ -301,9 +310,27 @@ pub trait Solver<C: SolverConfig = DefaultConfig> {
     ///
     /// # Arguments
     ///
-    /// * `cnf`: The `Cnf` formula to be solved. The literal and storage types of this
-    ///   `Cnf` must match those specified in the solver's configuration `C`.
-    fn new(cnf: Cnf<C::Literal, C::LiteralStorage>) -> Self;
+    /// * `cnf`: The `Cnf` formula to be solved.
+    fn new<L: Literal, S: LiteralStorage<L>>(cnf: Cnf<L, S>) -> Self;
+
+    /// Creates a solver instance from its components.
+    ///
+    /// # Arguments
+    ///
+    /// * `cnf`: The `Cnf` formula to be solved.
+    /// * `assignment`: The assignment data structure.
+    /// * `manager`: The clause management scheme.
+    /// * `propagator`: The unit propagation scheme.
+    /// * `restarter`: The restart strategy.
+    /// * `selector`: The variable selection strategy.
+    fn from_parts<L: Literal, S: LiteralStorage<L>>(
+        cnf: Cnf<L, S>,
+        assignment: C::Assignment,
+        manager: C::ClauseManager,
+        propagator: C::Propagator,
+        restarter: C::Restarter,
+        selector: C::VariableSelector,
+    ) -> Self;
 
     /// Attempts to solve the CNF formula provided at construction.
     ///
@@ -328,6 +355,85 @@ pub trait Solver<C: SolverConfig = DefaultConfig> {
     #[allow(dead_code)]
     fn debug(&mut self);
 }
+
+/// An enum representing different implementations of SAT solvers.
+#[derive(Debug, Clone)]
+pub enum SolverImpls <C: SolverConfig = DynamicConfig> {
+    /// A DPLL-based SAT solver.
+    Dpll(Box<Dpll<C>>),
+    /// A CDCL-based SAT solver.
+    Cdcl(Box<Cdcl<C>>),
+}
+
+impl <C: SolverConfig> Solver<C> for SolverImpls<C> {
+    fn new<L: Literal, S: LiteralStorage<L>>(cnf: Cnf<L, S>) -> Self {
+        let cnf: Cnf<C::Literal, C::LiteralStorage> = cnf.convert();
+        let cdcl = Cdcl::new(cnf);
+        Self::Cdcl(Box::new(cdcl))
+    }
+
+    fn from_parts<L: Literal, S: LiteralStorage<L>>(
+        cnf: Cnf<L, S>,
+        assignment: C::Assignment,
+        manager: C::ClauseManager,
+        propagator: C::Propagator,
+        restarter: C::Restarter,
+        selector: C::VariableSelector,
+    ) -> Self {
+        let cnf: Cnf<C::Literal, C::LiteralStorage> = cnf.convert();
+        let cdcl = Cdcl::from_parts(cnf, assignment, manager, propagator, restarter, selector);
+        Self::Cdcl(Box::new(cdcl))
+    }
+
+    fn solve(&mut self) -> Option<Solutions> {
+        match self {
+            Self::Dpll(solver) => solver.solve(),
+            Self::Cdcl(solver) => solver.solve(),
+        }
+    }
+
+    fn solutions(&self) -> Solutions {
+        match self {
+            Self::Dpll(solver) => solver.solutions(),
+            Self::Cdcl(solver) => solver.solutions(),
+        }
+    }
+
+    fn stats(&self) -> SolutionStats {
+        match self {
+            Self::Dpll(solver) => solver.stats(),
+            Self::Cdcl(solver) => solver.stats(),
+        }
+    }
+
+    fn debug(&mut self) {
+        match self {
+            Self::Dpll(solver) => solver.debug(),
+            Self::Cdcl(solver) => solver.debug(),
+        }
+    }
+}
+
+/// An enum representing the types of SAT solvers available.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, ValueEnum)]
+pub enum SolverType {
+    /// A DPLL-based SAT solver.
+    Dpll,
+    /// A CDCL-based SAT solver.
+    #[default]
+    Cdcl,
+}
+
+impl Display for SolverType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dpll => write!(f, "dpll"),
+            Self::Cdcl => write!(f, "cdcl"),
+        }
+    }
+}
+
+
 
 #[cfg(test)]
 mod tests {

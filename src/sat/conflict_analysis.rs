@@ -356,11 +356,11 @@ mod tests {
     // use crate::sat::literal::PackedLiteral;
     // use crate::sat::trail::{Reason, Trail};
     // use smallvec::SmallVec;
-    // 
+    //
     // type TestLiteral = PackedLiteral;
     // type TestClauseStorage = SmallVec<[TestLiteral; 8]>;
     // type TestAnalyser = Analyser<TestLiteral, TestClauseStorage, 12>;
-    // 
+    //
     // #[test]
     // fn test_analyse_ground_conflict() {
     //     let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
@@ -368,17 +368,17 @@ mod tests {
     //     cnf.clauses.push(Clause::from(vec![-1]));
     //     cnf.num_vars = 2;
     //     cnf.non_learnt_idx = 2;
-    // 
+    //
     //     let mut assignment = VecAssignment::default();
     //     assignment.set(1, true);
-    // 
+    //
     //     let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
     //     trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
     //     trail.push(TestLiteral::new(1, false), 0, Reason::Clause(0));
-    // 
+    //
     //     let mut analyser = TestAnalyser::new(cnf.num_vars);
     //     let (conflict_type, _to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 1);
-    // 
+    //
     //     match conflict_type {
     //         Conflict::Unit(learnt_clause) => {
     //             assert_eq!(learnt_clause.len(), 1);
@@ -389,7 +389,7 @@ mod tests {
     //     }
     //     assert_eq!(analyser.count, 1);
     // }
-    // 
+    //
     // #[test]
     // fn test_analyse_simple_1uip_conflict() {
     //     let mut cnf = Cnf::<TestLiteral, TestClauseStorage>::default();
@@ -399,20 +399,20 @@ mod tests {
     //         .push([-2, -3].into_iter().collect::<Clause<_>>());
     //     cnf.num_vars = 4;
     //     cnf.non_learnt_idx = 3;
-    // 
+    //
     //     let mut assignment = VecAssignment::default();
     //     assignment.set(1, true);
     //     assignment.set(2, true);
     //     assignment.set(3, true);
-    // 
+    //
     //     let mut trail = Trail::new(cnf.clauses.as_ref(), cnf.num_vars);
     //     trail.push(TestLiteral::new(1, true), 0, Reason::Decision);
     //     trail.push(TestLiteral::new(2, true), 0, Reason::Decision);
     //     trail.push(TestLiteral::new(3, true), 0, Reason::Clause(1));
-    // 
+    //
     //     let mut analyser = TestAnalyser::new(cnf.num_vars);
     //     let (conflict_type, to_bump) = analyser.analyse_conflict(&cnf, &trail, &assignment, 2);
-    // 
+    //
     //     match conflict_type {
     //         Conflict::Unit(learnt_clause) => {
     //             assert_eq!(learnt_clause.len(), 1);
@@ -420,7 +420,7 @@ mod tests {
     //         }
     //         other => panic!("Expected Unit conflict, got {other:?}"),
     //     }
-    // 
+    //
     //     assert!(to_bump.contains(&TestLiteral::from_i32(-1)));
     //     assert!(to_bump.contains(&TestLiteral::from_i32(-2)));
     //     assert!(to_bump.contains(&TestLiteral::from_i32(-3)));

@@ -12,8 +12,9 @@
 
 use crate::sat::literal; // For the `convert` function in the module's `convert` function
 use crate::sat::literal::Literal;
+use clap::ValueEnum;
 use smallvec::SmallVec;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::ops::{Index, IndexMut};
 use std::slice::{Iter, IterMut};
 
@@ -174,15 +175,11 @@ impl<L: Literal> LiteralStorage<L> for Vec<L> {
     }
 
     unsafe fn get_unchecked(&self, index: usize) -> &L {
-        unsafe {
-            self.as_slice().get_unchecked(index)
-        }
+        unsafe { self.as_slice().get_unchecked(index) }
     }
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
-        unsafe {
-            self.as_mut_slice().get_unchecked_mut(index)
-        }
+        unsafe { self.as_mut_slice().get_unchecked_mut(index) }
     }
 
     fn swap_remove(&mut self, index: usize) -> L {
@@ -234,15 +231,11 @@ impl<L: Literal, const N: usize> LiteralStorage<L> for SmallVec<[L; N]> {
     }
 
     unsafe fn get_unchecked(&self, index: usize) -> &L {
-        unsafe {
-            self.as_slice().get_unchecked(index)
-        }
+        unsafe { self.as_slice().get_unchecked(index) }
     }
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
-        unsafe {
-            self.as_mut_slice().get_unchecked_mut(index)
-        }
+        unsafe { self.as_mut_slice().get_unchecked_mut(index) }
     }
 
     fn swap_remove(&mut self, index: usize) -> L {
@@ -275,6 +268,189 @@ pub fn convert<L: Literal, U: Literal, S: LiteralStorage<U>, T: LiteralStorage<L
     literals: &T,
 ) -> Vec<U> {
     literals.iter().map(literal::convert::<L, U>).collect()
+}
+
+/// Enum representing the storage implementation for literals in a clause.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LiteralStorageImpls<L: Literal, const N: usize> {
+    /// Uses a standard `Vec` to store literals.
+    VecStorage(Vec<L>),
+    /// Uses a `SmallVec` to store literals, optimised for small collections.
+    SmallVecStorage(SmallVec<[L; N]>),
+}
+
+impl<L: Literal, const N: usize> Index<usize> for LiteralStorageImpls<L, N> {
+    type Output = L;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            Self::VecStorage(vec) => &vec[index],
+            Self::SmallVecStorage(small_vec) => &small_vec[index],
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> IndexMut<usize> for LiteralStorageImpls<L, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match self {
+            Self::VecStorage(vec) => &mut vec[index],
+            Self::SmallVecStorage(small_vec) => &mut small_vec[index],
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> FromIterator<L> for LiteralStorageImpls<L, N> {
+    fn from_iter<T: IntoIterator<Item = L>>(iter: T) -> Self {
+        let mut vec = Vec::new();
+        for item in iter {
+            vec.push(item);
+        }
+        if vec.len() <= N {
+            Self::SmallVecStorage(SmallVec::from(vec))
+        } else {
+            Self::VecStorage(vec)
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> From<Vec<L>> for LiteralStorageImpls<L, N> {
+    fn from(value: Vec<L>) -> Self {
+        if value.len() <= N {
+            Self::SmallVecStorage(SmallVec::from(value))
+        } else {
+            Self::VecStorage(value)
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> Extend<L> for LiteralStorageImpls<L, N> {
+    fn extend<T: IntoIterator<Item = L>>(&mut self, iter: T) {
+        match self {
+            Self::VecStorage(vec) => vec.extend(iter),
+            Self::SmallVecStorage(small_vec) => small_vec.extend(iter),
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> AsRef<[L]> for LiteralStorageImpls<L, N> {
+    fn as_ref(&self) -> &[L] {
+        match self {
+            Self::VecStorage(vec) => vec.as_ref(),
+            Self::SmallVecStorage(small_vec) => small_vec.as_ref(),
+        }
+    }
+}
+
+impl<L: Literal, const N: usize> Default for LiteralStorageImpls<L, N> {
+    fn default() -> Self {
+        Self::VecStorage(Vec::default())
+    }
+}
+
+impl<L: Literal, const N: usize> LiteralStorage<L> for LiteralStorageImpls<L, N> {
+    fn push(&mut self, literal: L) {
+        match self {
+            Self::VecStorage(vec) => vec.push(literal),
+            Self::SmallVecStorage(small_vec) => small_vec.push(literal),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::VecStorage(vec) => vec.len(),
+            Self::SmallVecStorage(small_vec) => small_vec.len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn iter(&self) -> Iter<L> {
+        match self {
+            Self::VecStorage(vec) => vec.iter(),
+            Self::SmallVecStorage(small_vec) => small_vec.iter(),
+        }
+    }
+
+    fn iter_mut(&mut self) -> IterMut<L> {
+        match self {
+            Self::VecStorage(vec) => vec.iter_mut(),
+            Self::SmallVecStorage(small_vec) => small_vec.iter_mut(),
+        }
+    }
+
+    fn remove(&mut self, index: usize) -> L {
+        match self {
+            Self::VecStorage(vec) => vec.remove(index),
+            Self::SmallVecStorage(small_vec) => small_vec.remove(index),
+        }
+    }
+
+    fn clear(&mut self) {
+        match self {
+            Self::VecStorage(vec) => vec.clear(),
+            Self::SmallVecStorage(small_vec) => small_vec.clear(),
+        }
+    }
+
+    fn swap(&mut self, a: usize, b: usize) {
+        match self {
+            Self::VecStorage(vec) => vec.swap(a, b),
+            Self::SmallVecStorage(small_vec) => small_vec.swap(a, b),
+        }
+    }
+
+    unsafe fn get_unchecked(&self, index: usize) -> &L {
+        match self {
+            Self::VecStorage(vec) => unsafe { vec.get_unchecked(index) },
+            Self::SmallVecStorage(small_vec) => unsafe { small_vec.get_unchecked(index) },
+        }
+    }
+
+    unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut L {
+        match self {
+            Self::VecStorage(vec) => unsafe { vec.get_unchecked_mut(index) },
+            Self::SmallVecStorage(small_vec) => unsafe { small_vec.get_unchecked_mut(index) },
+        }
+    }
+
+    fn swap_remove(&mut self, index: usize) -> L {
+        match self {
+            Self::VecStorage(vec) => vec.swap_remove(index),
+            Self::SmallVecStorage(small_vec) => small_vec.swap_remove(index),
+        }
+    }
+}
+
+/// Enum representing the storage type for literals in a clause.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Copy, Default, ValueEnum)]
+pub enum LiteralStorageType {
+    /// Uses a standard `Vec` to store literals.
+    Vec,
+    /// Uses a `SmallVec` to store literals, optimised for small collections.
+    #[default]
+    SmallVec,
+}
+
+impl Display for LiteralStorageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Vec => write!(f, "vec"),
+            Self::SmallVec => write!(f, "small-vec"),
+        }
+    }
+}
+
+impl LiteralStorageType {
+    /// Returns the name of the storage type as a string.
+    #[must_use]
+    pub fn to_impl<L: Literal, const N: usize>(self) -> LiteralStorageImpls<L, N> {
+        match self {
+            Self::Vec => LiteralStorageImpls::VecStorage(Vec::new()),
+            Self::SmallVec => LiteralStorageImpls::SmallVecStorage(SmallVec::new()),
+        }
+    }
 }
 
 #[cfg(test)]

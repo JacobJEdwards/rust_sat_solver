@@ -19,7 +19,8 @@
 //!     restarts increases by a fixed amount `N` after each restart.
 //!   - `Never`: A strategy that never triggers a restart.
 
-use std::fmt::Debug;
+use clap::ValueEnum;
+use std::fmt::{Debug, Display};
 
 /// Trait defining the interface for restart strategies.
 ///
@@ -375,5 +376,118 @@ impl<const N: usize> Restarter for Linear<N> {
 
     fn num_restarts(&self) -> usize {
         self.restarts
+    }
+}
+
+/// An enum representing different restart strategies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestarterImpls<const N: usize> {
+    /// The Luby restart strategy, which uses the Luby sequence for determining restart intervals.
+    Luby(Luby<N>),
+    /// A geometric restart strategy, where the interval between restarts is multiplied by a constant factor `N`.
+    Geometric(Geometric<N>),
+    /// A fixed interval restart strategy, where restarts occur every `N` conflicts (or other units).
+    Fixed(Fixed<N>),
+    /// A linear restart strategy, where the interval between restarts increases by a fixed amount `N` after each restart.
+    Linear(Linear<N>),
+    /// A strategy that never triggers a restart.
+    Never(Never),
+}
+
+impl<const N: usize> Restarter for RestarterImpls<N> {
+    fn new() -> Self {
+        Self::Luby(Luby::new())
+    }
+
+    fn restarts_in(&self) -> usize {
+        match self {
+            Self::Luby(r) => r.restarts_in(),
+            Self::Geometric(r) => r.restarts_in(),
+            Self::Fixed(r) => r.restarts_in(),
+            Self::Linear(r) => r.restarts_in(),
+            Self::Never(r) => r.restarts_in(),
+        }
+    }
+
+    fn increment_restarts_in(&mut self) {
+        match self {
+            Self::Luby(r) => r.increment_restarts_in(),
+            Self::Geometric(r) => r.increment_restarts_in(),
+            Self::Fixed(r) => r.increment_restarts_in(),
+            Self::Linear(r) => r.increment_restarts_in(),
+            Self::Never(_) => {}
+        }
+    }
+
+    fn restart(&mut self) {
+        match self {
+            Self::Luby(r) => r.restart(),
+            Self::Geometric(r) => r.restart(),
+            Self::Fixed(r) => r.restart(),
+            Self::Linear(r) => r.restart(),
+            Self::Never(_) => {}
+        }
+    }
+
+    fn num_restarts(&self) -> usize {
+        match self {
+            Self::Luby(r) => r.num_restarts(),
+            Self::Geometric(r) => r.num_restarts(),
+            Self::Fixed(r) => r.num_restarts(),
+            Self::Linear(r) => r.num_restarts(),
+            Self::Never(_) => 0,
+        }
+    }
+
+    fn should_restart(&mut self) -> bool {
+        match self {
+            Self::Luby(r) => r.should_restart(),
+            Self::Geometric(r) => r.should_restart(),
+            Self::Fixed(r) => r.should_restart(),
+            Self::Linear(r) => r.should_restart(),
+            Self::Never(_) => false,
+        }
+    }
+}
+
+/// An enum representing the type of restarter to use in a SAT solver.
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default, ValueEnum)]
+pub enum RestarterType {
+    /// The Luby restart strategy, which uses the Luby sequence for determining restart intervals.
+    #[default]
+    Luby,
+    /// A geometric restart strategy, where the interval between restarts is multiplied by a constant factor `N`.
+    Geometric,
+    /// A fixed interval restart strategy, where restarts occur every `N` conflicts (or other units).
+    Fixed,
+    /// A linear restart strategy, where the interval between restarts increases by a fixed amount `N` after each restart.
+    Linear,
+    /// A strategy that never triggers a restart.
+    Never,
+}
+
+impl Display for RestarterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Luby => write!(f, "luby"),
+            Self::Geometric => write!(f, "geometric"),
+            Self::Fixed => write!(f, "fixed"),
+            Self::Linear => write!(f, "linear"),
+            Self::Never => write!(f, "never"),
+        }
+    }
+}
+
+impl RestarterType {
+    /// Returns a new instance of the corresponding restarter.
+    #[must_use]
+    pub fn to_impl(self) -> RestarterImpls<3> {
+        match self {
+            Self::Luby => RestarterImpls::Luby(Luby::new()),
+            Self::Geometric => RestarterImpls::Geometric(Geometric::new()),
+            Self::Fixed => RestarterImpls::Fixed(Fixed::new()),
+            Self::Linear => RestarterImpls::Linear(Linear::new()),
+            Self::Never => RestarterImpls::Never(Never::new()),
+        }
     }
 }
