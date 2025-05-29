@@ -10,3 +10,9 @@ pub mod sat;
 
 /// The `sudoku` module implements the Sudoku puzzle solver, which fills a 9x9 grid based on Sudoku rules.
 pub mod sudoku;
+
+/// The `ports` module provides various SAT solver ports.
+pub mod ports;
+
+/// The `command_line` module provides a command-line interface for the SAT solver.
+pub mod command_line;

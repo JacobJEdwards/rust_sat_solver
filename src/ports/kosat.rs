@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 use core::cmp::PartialEq;
+use core::fmt::Debug;
 use core::ops::Not;
 use std::collections::HashSet;
-use core::fmt::Debug;
 
 /// mod clause
 type Lit = i32;
@@ -35,13 +37,17 @@ impl Clause {
     }
 
     fn renumber(&self) -> Clause {
-        let lits = self.literals.iter().map(|&l| {
-            if l < 0 {
-                negative(-l - 1)
-            } else {
-                positive(l - 1)
-            }
-        }).collect();
+        let lits = self
+            .literals
+            .iter()
+            .map(|&l| {
+                if l < 0 {
+                    negative(-l - 1)
+                } else {
+                    positive(l - 1)
+                }
+            })
+            .collect();
 
         Clause::new(lits)
     }
@@ -50,7 +56,9 @@ impl Clause {
 /// mod var value
 #[derive(Debug, PartialEq, Clone, Eq, Copy)]
 pub enum VarValue {
-    TRUE, FALSE, UNDEFINED
+    True,
+    False,
+    Undefined,
 }
 
 impl Not for VarValue {
@@ -58,9 +66,9 @@ impl Not for VarValue {
 
     fn not(self) -> VarValue {
         match self {
-            VarValue::TRUE => VarValue::FALSE,
-            VarValue::FALSE => VarValue::TRUE,
-            VarValue::UNDEFINED => VarValue::UNDEFINED
+            VarValue::True => VarValue::False,
+            VarValue::False => VarValue::True,
+            VarValue::Undefined => VarValue::Undefined,
         }
     }
 }
@@ -69,7 +77,7 @@ impl Not for VarValue {
 struct VarState {
     pub value: VarValue,
     pub reason: Option<Clause>,
-    pub level: i32
+    pub level: i32,
 }
 
 /// mod restarter
@@ -109,7 +117,8 @@ impl Restarter {
     }
 
     pub fn restart(&mut self) {
-        self.restart_number = self.luby_multiplier_constant * Self::luby(self.luby_position as i32, 1) as usize;
+        self.restart_number =
+            self.luby_multiplier_constant * Self::luby(self.luby_position as i32, 1) as usize;
         self.luby_position += 1;
     }
 
@@ -120,13 +129,16 @@ impl Restarter {
             self.restart();
             true
         } else {
-        false}
+            false
+        }
     }
 }
 
 /// mod var selector
 trait VariableSelector: Clone + PartialEq + Debug {
-    fn new() -> Self where Self: Sized;
+    fn new() -> Self
+    where
+        Self: Sized;
 
     fn init_assumptions(&mut self, assumptions: Vec<Lit>);
     fn build(&mut self, clauses: Vec<Clause>);
@@ -137,7 +149,7 @@ trait VariableSelector: Clone + PartialEq + Debug {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct VSIDS {
+struct Vsids {
     number_of_variables: usize,
     decay: usize,
     multiplier: f64,
@@ -148,12 +160,12 @@ struct VSIDS {
     assumptions: Vec<Lit>,
 }
 
-impl VSIDS {
+impl Vsids {
     fn max_var(&self, vars: &[VarState]) -> Lit {
         let mut max = -1.0;
         let mut max_var = 0;
         for (i, var) in vars.iter().enumerate() {
-            if var.value == VarValue::UNDEFINED && self.activity[i] > max {
+            if var.value == VarValue::Undefined && self.activity[i] > max {
                 max = self.activity[i];
                 max_var = i;
             }
@@ -162,9 +174,9 @@ impl VSIDS {
     }
 }
 
-impl VariableSelector for VSIDS {
+impl VariableSelector for Vsids {
     fn new() -> Self {
-        VSIDS {
+        Vsids {
             number_of_variables: 0,
             decay: 50,
             multiplier: 2.0,
@@ -194,13 +206,20 @@ impl VariableSelector for VSIDS {
     }
 
     fn next_decision(&mut self, vars: &[VarState], _: i32) -> i32 {
-        if self.assumptions.iter().any(|&lit| vars[variable(lit) as usize].value == VarValue::FALSE) {
+        if self
+            .assumptions
+            .iter()
+            .any(|&lit| vars[variable(lit) as usize].value == VarValue::False)
+        {
             return -1;
         }
 
         let max = self.max_var(vars);
-        *self.assumptions.iter().find(|&&lit| vars[variable(lit) as usize].value ==
-            VarValue::UNDEFINED).unwrap_or(&max)
+        *self
+            .assumptions
+            .iter()
+            .find(|&&lit| vars[variable(lit) as usize].value == VarValue::Undefined)
+            .unwrap_or(&max)
     }
 
     fn add_variable(&mut self) {
@@ -227,9 +246,7 @@ impl VariableSelector for VSIDS {
         }
     }
 
-    fn backtrack(&mut self, variable: i32) {
-
-    }
+    fn backtrack(&mut self, _variable: i32) {}
 }
 
 /// mod cdcl
@@ -240,9 +257,9 @@ pub enum Solvertype {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CDCL {
+pub struct Cdcl {
     pub solver_type: Solvertype,
-    pub constraints : Vec<Clause>,
+    pub constraints: Vec<Clause>,
     pub learned: Vec<Clause>,
     pub number_of_variables: usize,
     vars: Vec<VarState>,
@@ -255,15 +272,15 @@ pub struct CDCL {
     pub minimise_marks: Vec<usize>,
     pub mark: usize,
     restart: Restarter,
-    selector: VSIDS,
+    selector: Vsids,
     pub polarity: Vec<VarValue>,
     pub seen: Vec<bool>,
     pub assumptions: Vec<i32>,
 }
 
-impl CDCL {
+impl Cdcl {
     pub fn new(initial: Vec<Clause>, initial_vars_num: usize) -> Self {
-        let mut solver = CDCL {
+        let mut solver = Cdcl {
             solver_type: Solvertype::Incremental,
             constraints: Vec::new(),
             learned: Vec::new(),
@@ -278,7 +295,7 @@ impl CDCL {
             minimise_marks: Vec::new(),
             mark: 0,
             restart: Restarter::new(),
-            selector: VSIDS::new(),
+            selector: Vsids::new(),
             polarity: Vec::new(),
             seen: Vec::new(),
             assumptions: Vec::new(),
@@ -288,12 +305,12 @@ impl CDCL {
         for clause in initial_clauses {
             solver.new_clause(&mut clause.clone());
         }
-        solver.polarity = vec![VarValue::UNDEFINED; solver.number_of_variables + 1];
+        solver.polarity = vec![VarValue::Undefined; solver.number_of_variables + 1];
         solver
     }
 
     fn unchecked_enqueue(&mut self, lit: Lit, reason: Option<Clause>) {
-        self.set_value(lit, VarValue::TRUE);
+        self.set_value(lit, VarValue::True);
         let v = variable(lit);
         self.vars[v as usize].reason = reason;
         self.vars[v as usize].level = self.level as i32;
@@ -302,8 +319,8 @@ impl CDCL {
 
     fn get_value(&self, lit: Lit) -> VarValue {
         let v = variable(lit);
-        if self.vars[v as usize].value == VarValue::UNDEFINED {
-            return VarValue::UNDEFINED;
+        if self.vars[v as usize].value == VarValue::Undefined {
+            return VarValue::Undefined;
         }
 
         if lit % 2 == 1 {
@@ -332,11 +349,11 @@ impl CDCL {
         self.number_of_variables += 1;
         self.selector.add_variable();
         self.vars.push(VarState {
-            value: VarValue::UNDEFINED,
+            value: VarValue::Undefined,
             reason: None,
             level: 0,
         });
-        self.polarity.push(VarValue::UNDEFINED);
+        self.polarity.push(VarValue::Undefined);
 
         self.watchers.push(Vec::new());
         self.watchers.push(Vec::new());
@@ -352,17 +369,28 @@ impl CDCL {
     pub fn new_clause(&mut self, clause: &mut Clause) {
         assert_eq!(self.level, 0);
 
-        let max_var = clause.literals.iter().map(|&lit| variable(lit)).max().unwrap_or(0);
+        let max_var = clause
+            .literals
+            .iter()
+            .map(|&lit| variable(lit))
+            .max()
+            .unwrap_or(0);
 
         while self.number_of_variables <= max_var as usize {
             self.add_variable();
         }
 
-        if clause.literals.iter().any(|&lit| self.get_value(lit) == VarValue::TRUE) {
+        if clause
+            .literals
+            .iter()
+            .any(|&lit| self.get_value(lit) == VarValue::True)
+        {
             return;
         }
 
-        clause.literals.retain(|lit| self.get_value(*lit) != VarValue::FALSE);
+        clause
+            .literals
+            .retain(|lit| self.get_value(*lit) != VarValue::False);
         // if (clause.any { (it xor 1) in clause }) {
         //     return
         // }
@@ -378,14 +406,16 @@ impl CDCL {
         let lit = self.trail.pop().unwrap();
         let v = variable(lit);
         self.polarity[v as usize] = self.get_value(positive(v));
-        self.set_value(positive(v), VarValue::UNDEFINED);
+        self.set_value(positive(v), VarValue::Undefined);
         self.vars[v as usize].reason = None;
         self.vars[v as usize].level = -1;
         self.selector.backtrack(v);
     }
 
     fn clear_trail(&mut self, until: i32) {
-        while !self.trail.is_empty() && self.vars[variable(*self.trail.last().unwrap()) as usize].level > until {
+        while !self.trail.is_empty()
+            && self.vars[variable(*self.trail.last().unwrap()) as usize].level > until
+        {
             self.trail_remove_last();
         }
     }
@@ -429,7 +459,12 @@ impl CDCL {
                     }
 
                     let mut lemma = self.analyse_conflict(conflict);
-                    lemma.lbd = lemma.literals.iter().map(|&lit| variable(lit)).collect::<HashSet<_>>().len();
+                    lemma.lbd = lemma
+                        .literals
+                        .iter()
+                        .map(|&lit| variable(lit))
+                        .collect::<HashSet<_>>()
+                        .len();
                     self.backtrack(&lemma);
                     self.qhead = self.trail.len();
 
@@ -458,7 +493,8 @@ impl CDCL {
                     }
 
                     self.level += 1;
-                    let mut next_decision = self.selector.next_decision(&self.vars, self.level as i32);
+                    let mut next_decision =
+                        self.selector.next_decision(&self.vars, self.level as i32);
                     num_decisions += 1;
 
                     if next_decision == -1 {
@@ -466,7 +502,9 @@ impl CDCL {
                         return None;
                     }
 
-                    if self.level > self.assumptions.len() && self.polarity[variable(next_decision) as usize] == VarValue::FALSE {
+                    if self.level > self.assumptions.len()
+                        && self.polarity[variable(next_decision) as usize] == VarValue::False
+                    {
                         next_decision = negative(variable(next_decision));
                     }
 
@@ -483,13 +521,15 @@ impl CDCL {
     }
 
     fn get_model(&self) -> Vec<i32> {
-        self.vars.iter().enumerate().map(|(i, v)| {
-            match v.value {
-                VarValue::TRUE => (i + 1) as i32,
-                VarValue::UNDEFINED => (i + 1) as i32,
-                VarValue::FALSE => -(i as i32) - 1,
-            }
-        }).collect()
+        self.vars
+            .iter()
+            .enumerate()
+            .map(|(i, v)| match v.value {
+                VarValue::True => (i + 1) as i32,
+                VarValue::Undefined => (i + 1) as i32,
+                VarValue::False => -(i as i32) - 1,
+            })
+            .collect()
     }
 
     fn add_watchers(&mut self, clause: &Clause) {
@@ -519,7 +559,7 @@ impl CDCL {
         while self.qhead < self.trail.len() {
             let lit = self.trail[self.qhead];
             self.qhead += 1;
-            if self.get_value(lit) == VarValue::FALSE {
+            if self.get_value(lit) == VarValue::False {
                 let v = variable(lit);
                 let reason = self.vars[v as usize].reason.clone();
                 return reason;
@@ -537,29 +577,30 @@ impl CDCL {
                 if variable(clause.literals[0]) == variable(lit) {
                     clause.literals.swap(0, 1);
                 }
-                if self.get_value(clause.literals[0]) == VarValue::TRUE {
+                if self.get_value(clause.literals[0]) == VarValue::True {
                     continue;
                 }
                 let mut first_not_false = -1;
                 for ind in 2..clause.literals.len() {
-                    if self.get_value(clause.literals[ind]) != VarValue::FALSE {
+                    if self.get_value(clause.literals[ind]) != VarValue::False {
                         first_not_false = ind as i32;
                         break;
                     }
                 }
-                if first_not_false == -1 && self.get_value(clause.literals[0]) == VarValue::FALSE {
+                if first_not_false == -1 && self.get_value(clause.literals[0]) == VarValue::False {
                     conflict = Some(clause.clone());
                 } else if first_not_false == -1 {
                     self.unchecked_enqueue(clause.literals[0], Some(clause.clone()));
                 } else {
-                    self.watchers[clause.literals[first_not_false as usize] as usize].push(clause.clone());
+                    self.watchers[clause.literals[first_not_false as usize] as usize]
+                        .push(clause.clone());
                     clause.literals.swap(first_not_false as usize, 1);
                     to_keep.remove(to_keep.len() - 1);
                 }
             }
             self.watchers[(lit ^ 1) as usize] = to_keep;
             if conflict.is_some() {
-                break
+                break;
             }
         }
         conflict
@@ -577,17 +618,28 @@ impl CDCL {
 
     fn minimise(&mut self, clause: &Clause) -> Clause {
         self.mark += 1;
-        clause.literals.iter().for_each(|&l| self.minimise_marks[l as usize] = self.mark);
+        clause
+            .literals
+            .iter()
+            .for_each(|&l| self.minimise_marks[l as usize] = self.mark);
 
-        let literals = clause.literals.iter().filter(|&l| {
-            let v = variable(*l);
-            let reason = self.vars[v as usize].reason.clone();
-            if reason.is_none() {
-                return false;
-            }
-            let reason = reason.unwrap();
-            reason.literals.iter().all(|&l| self.minimise_marks[l as usize] == self.mark)
-        }).copied().collect();
+        let literals = clause
+            .literals
+            .iter()
+            .filter(|&l| {
+                let v = variable(*l);
+                let reason = self.vars[v as usize].reason.clone();
+                if reason.is_none() {
+                    return false;
+                }
+                let reason = reason.unwrap();
+                reason
+                    .literals
+                    .iter()
+                    .all(|&l| self.minimise_marks[l as usize] == self.mark)
+            })
+            .copied()
+            .collect();
 
         Clause::new(literals)
     }
@@ -634,14 +686,18 @@ impl CDCL {
         });
         if let Some(last_seen) = last_seen {
             let v = variable(*last_seen);
-            let to_insert = if self.get_value(positive(v)) == VarValue::TRUE {
+            let to_insert = if self.get_value(positive(v)) == VarValue::True {
                 negative(v)
             } else {
                 positive(v)
             };
             lemma.insert(to_insert);
             let mut new_clause = self.minimise(&Clause::new(lemma.iter().cloned().collect()));
-            let uip_index = new_clause.literals.iter().position(|&lit| variable(lit) == v).unwrap();
+            let uip_index = new_clause
+                .literals
+                .iter()
+                .position(|&lit| variable(lit) == v)
+                .unwrap();
             new_clause.literals.swap(0, uip_index);
             self.seen[v as usize] = false;
             fin = Some(new_clause);
@@ -651,8 +707,14 @@ impl CDCL {
         if fin.literals.len() > 1 {
             // val secondMax = newClause.drop(1).indices.maxByOrNull { vars[variable(newClause[it + 1])].level } ?: 0
             // newClause.swap(1, secondMax + 1)
-            let second_max = fin.literals.iter().skip(1).enumerate().max_by_key(|&(_, &lit)| self
-                .vars[variable(lit) as usize].level).unwrap().0;
+            let second_max = fin
+                .literals
+                .iter()
+                .skip(1)
+                .enumerate()
+                .max_by_key(|&(_, &lit)| self.vars[variable(lit) as usize].level)
+                .unwrap()
+                .0;
             fin.literals.swap(1, second_max + 1);
         }
         fin

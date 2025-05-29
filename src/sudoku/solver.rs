@@ -926,9 +926,9 @@ mod tests {
         let solution_grid: [[usize; 4]; 4] =
             [[1, 2, 3, 4], [3, 4, 1, 2], [2, 1, 4, 3], [4, 3, 2, 1]];
 
-        for r in 0..4 {
+        for (r, row) in solution_grid.iter().enumerate() {
             for c in 0..4 {
-                let num = solution_grid[r][c];
+                let num = row[c];
                 #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
                 solution_vars.push(Variable::new(r + 1, c + 1, num).encode(Size::Four) as i32);
             }

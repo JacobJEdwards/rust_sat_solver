@@ -449,8 +449,9 @@ impl Display for ClauseManagementType {
 
 impl ClauseManagementType {
     /// Converts the `ClauseManagementType` to a concrete `ClauseManagementImpls`.
+    #[allow(dead_code)]
     pub fn to_impl<L: Literal, S: LiteralStorage<L>, const N: usize>(
-        &self,
+        self,
         clauses: &[Clause<L, S>],
     ) -> ClauseManagementImpls<N> {
         match self {

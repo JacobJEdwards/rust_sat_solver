@@ -427,6 +427,7 @@ impl LiteralType {
     /// # Returns
     ///
     /// A new literal of the specified type.
+    #[allow(dead_code)]
     #[must_use]
     pub fn to_impl(self, var: Variable, polarity: bool) -> LiteralImpls {
         match self {

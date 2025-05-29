@@ -101,28 +101,11 @@
 //! and orchestrates the solving process based on user input.
 //! It uses modules `sat`, `sudoku`, and `nonogram` for specialised logic.
 
-use crate::sat::assignment::{AssignmentImpls, AssignmentType};
-use crate::sat::cdcl::Cdcl;
-use crate::sat::clause_management::{
-    ClauseManagement, ClauseManagementImpls, LbdClauseManagement, NoClauseManagement,
-};
-use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls, LiteralStorageType};
-use crate::sat::cnf::Cnf;
-use crate::sat::dimacs::parse_file;
-use crate::sat::dpll::Dpll;
-use crate::sat::literal::{Literal, LiteralImpls, LiteralType};
-use crate::sat::propagation::{PropagatorImpls, PropagatorType};
-use crate::sat::restarter::{RestarterImpls, RestarterType};
-use crate::sat::solver::{
-    DynamicConfig, SolutionStats, Solutions, Solver, SolverImpls, SolverType,
-};
-use crate::sat::variable_selection::{VariableSelectionImpls, VariableSelectionType};
-use clap::{Args, Parser, Subcommand};
-use itertools::Itertools;
-use std::path::PathBuf;
-use std::time::Duration;
-use tikv_jemalloc_ctl::{epoch, stats};
+use crate::command_line::cli::{Cli, Commands, solve_and_report, solve_dir, solve_nonogram, solve_sudoku, CommonOptions};
+use crate::sat::dimacs::{parse_dimacs_text, parse_file};
+use clap::{CommandFactory, Parser};
 
+mod command_line;
 mod nonogram;
 mod sat;
 mod sudoku;
@@ -132,236 +115,23 @@ mod sudoku;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-/// Defines the command-line interface for the SATSolver application.
-///
-/// Uses `clap` for parsing arguments.
-#[derive(Parser, Debug)]
-#[command(name = "SATSolver", version, about = "A configurable SAT solver")]
-struct Cli {
-    /// An optional global path argument. If provided without a subcommand,
-    /// it's treated as the path to a DIMACS .cnf file to solve.
-    #[arg(global = true)]
-    path: Option<PathBuf>,
-
-    /// Specifies the subcommand to execute (e.g. `file`, `text`, `sudoku`, `nonogram`).
-    #[clap(subcommand)]
-    command: Option<Commands>,
-
-    /// Common options applicable to all commands.
-    #[command(flatten)]
-    common: CommonOptions,
-}
-
-/// Enumerates the available subcommands for the SATSolver.
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Solve a CNF file in DIMACS format.
-    File {
-        /// Path to the DIMACS .cnf file.
-        #[arg(long)]
-        path: PathBuf,
-
-        /// Common options for this subcommand.
-        #[command(flatten)]
-        common: CommonOptions,
-    },
-
-    /// Solve a CNF formula provided as plain text.
-    Text {
-        /// Literal CNF input as a string (e.g. "1 -2 0\n2 3 0").
-        /// Each line represents a clause, literals are space-separated, and 0 terminates a clause.
-        #[arg(short, long)]
-        input: String,
-
-        /// Common options for this subcommand.
-        #[command(flatten)]
-        common: CommonOptions,
-    },
-
-    /// Solve a Sudoku puzzle.
-    /// The Sudoku puzzle is converted into a CNF formula, which is then solved.
-    Sudoku {
-        /// Path to the Sudoku file. The format of this file is defined by the `sudoku::solver::parse_sudoku_file` function.
-        #[arg(long)]
-        path: PathBuf,
-
-        /// If true, the generated DIMACS CNF representation of the Sudoku puzzle will be printed and saved to a file.
-        #[arg(short, long, default_value_t = false)]
-        export_dimacs: bool,
-
-        /// Common options for this subcommand.
-        #[command(flatten)]
-        common: CommonOptions,
-    },
-
-    /// Solve a Nonogram puzzle.
-    /// The Nonogram puzzle is converted into a CNF formula, which is then solved.
-    Nonogram {
-        /// Path to the Nonogram file. The format of this file is defined by the `nonogram::solver::parse_nonogram_file` function.
-        #[arg(long)]
-        path: PathBuf,
-
-        /// Common options for this subcommand.
-        #[command(flatten)]
-        common: CommonOptions,
-    },
-}
-
-/// Defines common command-line options shared across different subcommands.
-#[derive(Args, Debug, Default, Clone)]
-struct CommonOptions {
-    /// Enable debug output, providing more verbose logging during the solving process.
-    #[arg(short, long, default_value_t = false)]
-    debug: bool,
-
-    /// Enable verification of the found solution. If a solution is found, it's checked against the original CNF.
-    #[arg(short, long, default_value_t = true)]
-    verify: bool,
-
-    /// Enable printing of performance and problem statistics after solving.
-    #[arg(short, long, default_value_t = true)]
-    stats: bool,
-
-    /// Enable printing of the satisfying assignment (model) if the formula is satisfiable.
-    #[arg(short, long, default_value_t = false)]
-    print_solution: bool,
-
-    /// Specifies the SAT solver algorithm to use.
-    /// Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland).
-    #[arg(long, default_value_t = SolverType::Cdcl)]
-    solver: SolverType,
-
-    /// Disable clause management, which may affect the solver's performance and memory usage.
-    #[arg(short, long, default_value_t = false)]
-    no_clause_management: bool,
-
-    #[arg(long, default_value_t = RestarterType::Luby)]
-    restart_strategy: RestarterType,
-
-    #[arg(long, default_value_t = VariableSelectionType::Vsids)]
-    variable_selection: VariableSelectionType,
-
-    #[arg(long, default_value_t = LiteralStorageType::SmallVec)]
-    literal_storage: LiteralStorageType,
-
-    #[arg(long, default_value_t = AssignmentType::Vec)]
-    assignment: AssignmentType,
-
-    #[arg(long, default_value_t = PropagatorType::WatchedLiterals)]
-    propagator: PropagatorType,
-
-    #[arg(long, default_value_t = LiteralType::Double)]
-    literals: LiteralType,
-}
-
-/// Converts the `CommonOptions` into the specific implementations required by the solver.
-fn get_solver_parts<L: Literal, S: LiteralStorage<L>>(
-    common: &CommonOptions,
-    cnf: &Cnf<L, S>,
-) -> (
-    AssignmentImpls,
-    ClauseManagementImpls<10>,
-    PropagatorImpls<LiteralImpls, LiteralStorageImpls<LiteralImpls, 12>, AssignmentImpls>,
-    VariableSelectionImpls,
-    RestarterImpls<3>,
-) {
-    let manager = if common.no_clause_management {
-        ClauseManagementImpls::NoClauseManagement(NoClauseManagement::new(&cnf.clauses))
-    } else {
-        ClauseManagementImpls::LbdActivityClauseManagement(LbdClauseManagement::new(&cnf.clauses))
-    };
-    let cnf1: Cnf<LiteralImpls, LiteralStorageImpls<LiteralImpls, 12>> = cnf.convert();
-    let propagator = common.propagator.to_impl(&cnf1);
-
-    (
-        common.assignment.to_impl(cnf.num_vars),
-        manager,
-        propagator,
-        common
-            .variable_selection
-            .to_impl(cnf.num_vars, &cnf.lits, &cnf.clauses),
-        common.restart_strategy.to_impl(),
-    )
-}
-
-fn get_solver<L: Literal, S: LiteralStorage<L>>(
-    common: &CommonOptions,
-    cnf: Cnf<L, S>,
-) -> SolverImpls<DynamicConfig> {
-    let (assignment, manager, propagator, selector, restarter) = get_solver_parts(common, &cnf);
-
-    match common.solver {
-        SolverType::Cdcl => SolverImpls::Cdcl(Box::from(Cdcl::<DynamicConfig>::from_parts(
-            cnf.clone(),
-            assignment,
-            manager,
-            propagator,
-            restarter,
-            selector,
-        ))),
-        SolverType::Dpll => SolverImpls::Dpll(Box::from(Dpll::<DynamicConfig>::from_parts(
-            cnf.clone(),
-            assignment,
-            manager,
-            propagator,
-            restarter,
-            selector,
-        ))),
-    }
-}
-
-/// Solves a directory of CNF files.
-/// This function iterates over all `.cnf` files in the directory, parses each file,
-/// solves it, and reports the results.
-///
-/// # Arguments
-/// * `path` - The path to the directory containing CNF files.
-/// * `common` - Common options for the solver, such as debug mode, verification, and statistics.
-///
-/// # Panics
-/// If the provided path is not a directory or if any file cannot be read or parsed.
-fn solve_dir(path: &PathBuf, common: CommonOptions) {
-    if !path.is_dir() {
-        eprintln!("Provided path is not a directory: {}", path.display());
-        std::process::exit(1);
-    }
-
-    for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        let file_path = entry.path().to_path_buf();
-        if file_path.extension().is_none_or(|ext| ext != "cnf") {
-            eprintln!("Skipping non-CNF file: {}", file_path.display());
-            continue;
-        }
-        
-        if !file_path.is_file() {
-            eprintln!("Skipping non-file entry: {}", file_path.display());
-            continue;
-        }
-        
-        if !file_path.exists() {
-            eprintln!("File does not exist: {}", file_path.display());
-            continue;
-        }
-
-        let time = std::time::Instant::now();
-        let cnf = parse_file(&file_path)
-            .unwrap_or_else(|_| panic!("Failed to parse file: {}", file_path.display()));
-        let elapsed = time.elapsed();
-
-        solve_and_report(cnf, common.clone(), Some(&file_path), elapsed);
-    }
-}
-
-/// Main entry point of the SATSolver application.
+/// Main entry point of the sat solver application.
 ///
 /// Parses command-line arguments, dispatches to the appropriate command handler,
 /// and manages the overall execution flow.
 fn main() {
     let cli = Cli::parse();
 
+    if let Some(Commands::Completions { shell }) = &cli.command {
+        let mut cmd = <Cli as CommandFactory>::command();
+        let cmd_name = cmd.get_name().to_string();
+        clap_complete::generate(*shell, &mut cmd, cmd_name, &mut std::io::stdout());
+        return;
+    }
+
     // handle the case where a path is provided globally without a subcommand
     // this defaults to solving a DIMACS file
-    if let Some(path) = cli.path.clone() {
+    if let Some(path) = &cli.path {
         if cli.command.is_none() {
             if !path.exists() {
                 eprintln!("File does not exist: {}", path.display());
@@ -369,15 +139,36 @@ fn main() {
             }
 
             if path.is_dir() {
-                return solve_dir(&path, cli.common.clone());
+                if let Err(e) = solve_dir(path, &cli.common) {
+                    eprintln!("Error solving directory: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+            
+            if path.extension().is_some_and(|ext| ext == "sudoku") {
+                if let Err(e) = solve_sudoku(path, false, &CommonOptions::default()) {
+                    eprintln!("Error solving Sudoku: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+
+            // if nonogram, we handle it separately
+            if path.extension().is_some_and(|ext| ext == "nonogram") {
+                if let Err(e) = solve_nonogram(path, &CommonOptions::default()) {
+                    eprintln!("Error solving Nonogram: {}", e);
+                    std::process::exit(1);
+                }
+                return;
             }
 
             let time = std::time::Instant::now();
-            let cnf = parse_file(&path)
+            let cnf = parse_file(path)
                 .unwrap_or_else(|_| panic!("Failed to parse file: {}", path.display()));
             let elapsed = time.elapsed();
 
-            solve_and_report(cnf, cli.common, Some(&path), elapsed);
+            solve_and_report(&cnf, &cli.common, Some(path), elapsed);
             return;
         }
     }
@@ -390,7 +181,30 @@ fn main() {
             }
 
             if path.is_dir() {
-                return solve_dir(&path, common.clone());
+                let result = solve_dir(&path, &common);
+                if let Err(e) = result {
+                    eprintln!("Error solving directory: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+
+            // if sudoku, we handle it separately
+            if path.extension().is_some_and(|ext| ext == "sudoku") {
+                if let Err(e) = solve_sudoku(&path, false, &common) {
+                    eprintln!("Error solving Sudoku: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+
+            // if nonogram, we handle it separately
+            if path.extension().is_some_and(|ext| ext == "nonogram") {
+                if let Err(e) = solve_nonogram(&path, &common) {
+                    eprintln!("Error solving Nonogram: {}", e);
+                    std::process::exit(1);
+                }
+                return;
             }
 
             let time = std::time::Instant::now();
@@ -398,151 +212,31 @@ fn main() {
                 .unwrap_or_else(|_| panic!("Failed to parse file: {}", path.display()));
             let elapsed = time.elapsed();
 
-            solve_and_report(cnf, common, Some(&path), elapsed);
+            solve_and_report(&cnf, &common, Some(&path), elapsed);
         }
 
         Some(Commands::Text { input, common }) => {
             let time = std::time::Instant::now();
-            let clauses = parse_textual_cnf(&input);
-            let cnf = Cnf::from(clauses);
+            let result = parse_dimacs_text(&input);
+            let cnf = result.unwrap_or_else(|_| panic!("Failed to parse input text: {}", input));
             let elapsed = time.elapsed();
 
-            solve_and_report(cnf, common, None, elapsed);
+            solve_and_report(&cnf, &common, None, elapsed);
         }
         Some(Commands::Sudoku {
             path,
             common,
             export_dimacs,
         }) => {
-            if !path.exists() {
-                eprintln!("Sudoku file does not exist: {}", path.display());
+            if let Err(e) = solve_sudoku(&path, export_dimacs, &common) {
+                eprintln!("Error solving Sudoku: {}", e);
                 std::process::exit(1);
-            }
-
-            if !path.is_file() {
-                eprintln!("Provided path is not a file: {}", path.display());
-                std::process::exit(1);
-            }
-
-            let time = std::time::Instant::now();
-            let sudoku = sudoku::solver::parse_sudoku_file(&path);
-
-            match sudoku {
-                Ok(sudoku) => {
-                    println!("Parsed Sudoku:\n{sudoku}");
-
-                    let cnf = sudoku.to_cnf();
-
-                    if export_dimacs {
-                        let dimacs = cnf.to_string();
-                        println!("DIMACS:\n{dimacs}");
-
-                        let path_name = path.display().to_string();
-                        let dimacs_path = format!("{}.cnf", path_name);
-                        std::fs::write(&dimacs_path, dimacs).unwrap_or_else(|e| {
-                            panic!("Unable to write file {}: {}", dimacs_path, e)
-                        });
-                        println!("DIMACS written to: {dimacs_path}");
-                    }
-
-                    let parse_time = time.elapsed();
-                    let (sol, elapsed, solver_stats) =
-                        solve(cnf.clone(), common.debug, Some(&path), &common);
-
-                    epoch::advance().unwrap();
-
-                    let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
-                    let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
-                    let allocated_mib = allocated_bytes as f64 / (1024.0 * 1024.0);
-                    let resident_mib = resident_bytes as f64 / (1024.0 * 1024.0);
-
-                    if common.verify {
-                        verify_solution(cnf.clone(), &sol);
-                    }
-
-                    if common.stats {
-                        print_stats(
-                            parse_time,
-                            elapsed,
-                            &cnf,
-                            &solver_stats,
-                            allocated_mib,
-                            resident_mib,
-                            common.print_solution,
-                            &sol,
-                        );
-                    }
-
-                    if let Some(sol_values) = sol {
-                        let solution_grid = sudoku.decode(&sol_values);
-                        println!("Solution: {solution_grid}");
-                    } else {
-                        println!("No solution found");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error parsing Sudoku file: {}", e);
-                }
             }
         }
         Some(Commands::Nonogram { path, common }) => {
-            if !path.exists() {
-                eprintln!("Nonogram file does not exist: {}", path.display());
+            if let Err(e) = solve_nonogram(&path, &common) {
+                eprintln!("Error solving Nonogram: {}", e);
                 std::process::exit(1);
-            }
-
-            if !path.is_file() {
-                eprintln!("Provided path is not a file: {}", path.display());
-                std::process::exit(1);
-            }
-
-            let time = std::time::Instant::now();
-            let nonogram = nonogram::solver::parse_nonogram_file(&path);
-            match nonogram {
-                Ok(nonogram) => {
-                    println!("Parsed Nonogram:\n{nonogram}");
-
-                    let cnf = nonogram.to_cnf();
-
-                    let parse_time = time.elapsed();
-                    let (sol, elapsed, solver_stats) =
-                        solve(cnf.clone(), common.debug, Some(&path), &common);
-
-                    epoch::advance().unwrap();
-                    let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
-                    let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
-                    let allocated_mib = allocated_bytes as f64 / (1024.0 * 1024.0);
-                    let resident_mib = resident_bytes as f64 / (1024.0 * 1024.0);
-
-                    if common.verify {
-                        verify_solution(cnf.clone(), &sol);
-                    }
-
-                    if common.stats {
-                        print_stats(
-                            parse_time,
-                            elapsed,
-                            &cnf,
-                            &solver_stats,
-                            allocated_mib,
-                            resident_mib,
-                            common.print_solution,
-                            &sol,
-                        );
-                    }
-
-                    if let Some(sol_values) = sol {
-                        let solution_grid = nonogram.decode(&sol_values);
-                        for row in solution_grid.iter() {
-                            println!("{:?}", row);
-                        }
-                    } else {
-                        println!("No solution found");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error parsing Nonogram file: {}", e);
-                }
             }
         }
         None => {
@@ -551,301 +245,9 @@ fn main() {
                 std::process::exit(1);
             }
         }
-    }
-}
-
-/// Verifies a given solution (`sol`) against a CNF formula (`cnf`).
-///
-/// Prints whether the verification was successful. If verification fails, it panics.
-/// If `sol` is `None` (indicating UNSAT), it prints "UNSAT".
-///
-/// # Arguments
-/// * `cnf` - The CNF formula to verify against.
-/// * `sol` - An `Option<Solutions>` representing the model found by the solver.
-fn verify_solution(cnf: Cnf, sol: &Option<Solutions>) {
-    if let Some(sol_values) = sol.clone() {
-        let ok = cnf.verify(&sol_values);
-        println!("Verified: {:?}", ok);
-        if !ok {
-            panic!("Solution failed verification!");
-        }
-    } else {
-        println!("UNSAT");
-    }
-}
-
-/// Solves a CNF formula using the specified solver.
-///
-/// # Arguments
-/// * `cnf` - The CNF formula to solve.
-/// * `debug` - Boolean flag to enable debug printing.
-/// * `label` - An optional label for the problem (e.g. file path), used in debug output.
-/// * `solver_name` - The name of the solver to use ("dpll" or "cdcl").
-///
-/// # Returns
-/// A tuple containing:
-/// * `Option<Solutions>`: The solution (model) if found, otherwise `None`.
-/// * `Duration`: The time taken to solve the formula.
-/// * `SolutionStats`: Statistics collected during the solving process.
-///
-/// # Panics
-/// If `solver_name` is not "dpll" or "cdcl".
-fn solve(
-    cnf: Cnf,
-    debug: bool,
-    label: Option<&PathBuf>,
-    common_options: &CommonOptions,
-) -> (Option<Solutions>, Duration, SolutionStats) {
-    if let Some(name) = label {
-        println!("Solving: {:?}", name);
-    }
-
-    if debug {
-        println!("CNF: {}", cnf);
-        println!("Variables: {}", cnf.num_vars);
-        println!("Clauses: {}", cnf.clauses.len());
-        println!("Literals: {}", cnf.lits.len());
-    }
-
-    solve_impl(cnf, common_options)
-}
-
-/// Solves a CNF formula using the CDCL solver.
-///
-/// # Arguments
-/// * `cnf` - The CNF formula to solve.
-/// * `debug` - Boolean flag to enable debug printing.
-///
-/// # Returns
-/// See `solve` function return type.
-fn solve_impl(
-    cnf: Cnf,
-    common_options: &CommonOptions,
-) -> (Option<Solutions>, Duration, SolutionStats) {
-    epoch::advance().unwrap();
-
-    let time = std::time::Instant::now();
-
-    let mut solver = get_solver(common_options, cnf);
-    let sol = solver.solve();
-
-    let elapsed = time.elapsed();
-
-    if common_options.debug {
-        println!("Solution: {:?}", sol);
-        println!("Time: {:?}", elapsed);
-    }
-
-    (sol, elapsed, solver.stats())
-}
-
-/// Parses a CNF file, solves it, and reports results including stats and verification.
-///
-/// This function is a convenience wrapper around `solve`, `verify_solution`, and `print_stats`.
-///
-/// # Arguments
-/// * `cnf` - The CNF formula, typically parsed from a file or text.
-/// * `common` - `CommonOptions` providing solver configuration (debug, verify, stats, solver type).
-/// * `label` - An optional label for the problem (e.g. file path).
-/// * `parse_time` - The time taken to parse the CNF input.
-fn solve_and_report(
-    cnf: Cnf,
-    common: CommonOptions,
-    label: Option<&PathBuf>,
-    parse_time: Duration,
-) {
-    epoch::advance().unwrap();
-
-    let (sol, elapsed, solver_stats) = solve(cnf.clone(), common.debug, label, &common);
-
-    epoch::advance().unwrap();
-
-    let allocated_bytes = stats::allocated::mib().unwrap().read().unwrap();
-    let resident_bytes = stats::resident::mib().unwrap().read().unwrap();
-
-    let allocated_mib = allocated_bytes as f64 / (1024.0 * 1024.0);
-    let resident_mib = resident_bytes as f64 / (1024.0 * 1024.0);
-
-    if common.verify {
-        verify_solution(cnf.clone(), &sol);
-    }
-
-    if common.stats {
-        print_stats(
-            parse_time,
-            elapsed,
-            &cnf,
-            &solver_stats,
-            allocated_mib,
-            resident_mib,
-            common.print_solution,
-            &sol,
-        );
-    }
-}
-
-/// Parses a textual representation of a CNF formula into a list of clauses.
-///
-/// Each line in the input string is treated as a clause.
-/// Literals in a clause are space-separated integers.
-/// A `0` terminates a clause.
-/// Lines starting with 'c' (comment) or 'p' (problem line in DIMACS) are ignored.
-///
-/// # Arguments
-/// * `input` - A string containing the CNF formula. Example: "1 -2 0\n-1 3 0".
-///
-/// # Returns
-/// A `Vec<Vec<i32>>` where each inner vector represents a clause.
-fn parse_textual_cnf(input: &str) -> Vec<Vec<i32>> {
-    input
-        .lines()
-        .filter(|line| !line.trim().starts_with('c') && !line.trim().starts_with('p'))
-        .map(|line| {
-            line.split_whitespace()
-                .map(str::parse::<i32>)
-                .take_while(|res| *res != Ok(0))
-                .map(Result::unwrap)
-                .collect()
-        })
-        .collect_vec()
-}
-
-/// Helper function to print a single statistic line in a formatted table row.
-///
-/// # Arguments
-/// * `label` - The description of the statistic.
-/// * `value` - The value of the statistic, implementing `std::fmt::Display`.
-fn stat_line(label: &str, value: impl std::fmt::Display) {
-    println!("|  {:<28} {:>18}  |", label, value);
-}
-
-/// Helper function to print a statistic line that includes a rate (value/second).
-///
-/// # Arguments
-/// * `label` - The description of the statistic.
-/// * `value` - The raw count for the statistic.
-/// * `elapsed` - The elapsed time in seconds, used to calculate the rate.
-fn stat_line_with_rate(label: &str, value: usize, elapsed: f64) {
-    let rate = if elapsed > 0.0 {
-        value as f64 / elapsed
-    } else {
-        0.0
-    };
-    println!("|  {:<20} {:>12} ({:>9.0}/sec)  |", label, value, rate);
-}
-
-/// Prints a summary of problem and search statistics.
-///
-/// # Arguments
-/// * `parse_time` - Duration spent parsing the input.
-/// * `elapsed` - Duration spent by the solver.
-/// * `cnf` - The CNF formula.
-/// * `s` - `SolutionStats` collected by the solver.
-/// * `allocated` - Allocated memory in MiB.
-/// * `resident` - Resident memory in MiB.
-/// * `print_solution` - Flag indicating whether to print the solution model.
-/// * `solutions` - The `Option<Solutions>` found by the solver.
-#[allow(clippy::too_many_arguments)]
-fn print_stats(
-    parse_time: Duration,
-    elapsed: Duration,
-    cnf: &Cnf,
-    s: &SolutionStats,
-    allocated: f64,
-    resident: f64,
-    print_solution: bool,
-    solutions: &Option<Solutions>,
-) {
-    let elapsed_secs = elapsed.as_secs_f64();
-
-    println!("\n=======================[ Problem Statistics ]=========================");
-    stat_line("Parse time (s)", format!("{:.3}", parse_time.as_secs_f64()));
-    stat_line(
-        "Variables",
-        if cnf.num_vars > 0 {
-            cnf.num_vars - 1
-        } else {
-            0
-        },
-    );
-    stat_line("Clauses (original)", cnf.non_learnt_idx);
-    stat_line("Literals (original)", cnf.lits.len());
-
-    println!("========================[ Search Statistics ]========================");
-    stat_line("Learnt clauses", s.learnt_clauses);
-    stat_line("Total clauses (incl. learnt)", cnf.clauses.len());
-    stat_line_with_rate("Conflicts", s.conflicts, elapsed_secs);
-    stat_line_with_rate("Decisions", s.decisions, elapsed_secs);
-    stat_line_with_rate("Propagations", s.propagations, elapsed_secs);
-    stat_line_with_rate("Restarts", s.restarts, elapsed_secs);
-    stat_line("Memory usage (MiB)", format!("{:.2}", allocated));
-    stat_line("Resident memory (MiB)", format!("{:.2}", resident));
-    stat_line("CPU time (s)", format!("{:.3}", elapsed_secs));
-    println!("=====================================================================");
-
-    if let Some(solutions_values) = solutions {
-        if print_solution {
-            println!("Solutions: {}", solutions_values);
-        }
-    }
-
-    if solutions.is_some() {
-        println!("\nSATISFIABLE");
-    } else {
-        println!("\nUNSATISFIABLE");
+        Some(Commands::Completions { .. }) => unreachable!(),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_textual_cnf_simple() {
-        let input = "1 -2 0\n3 4 0";
-        let expected = vec![vec![1, -2], vec![3, 4]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_with_comments_and_p_line() {
-        let input = "c this is a comment\np cnf 2 2\n1 0\n-2 0";
-        let expected = vec![vec![1], vec![-2]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_empty_lines() {
-        let input = "1 0\n\n-2 0";
-        let expected = vec![vec![1], vec![], vec![-2]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_empty_input() {
-        let input = "";
-        let expected: Vec<Vec<i32>> = vec![];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_single_clause_no_newline() {
-        let input = "1 2 3 0";
-        let expected = vec![vec![1, 2, 3]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_clause_with_leading_space() {
-        let input = "  1 2 0";
-        let expected = vec![vec![1, 2]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-
-    #[test]
-    fn test_parse_textual_cnf_multiple_zeros_in_line() {
-        let input = "1 2 0 3 4 0";
-        let expected = vec![vec![1, 2]];
-        assert_eq!(parse_textual_cnf(input), expected);
-    }
-}
+mod tests {}

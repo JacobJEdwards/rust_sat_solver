@@ -419,10 +419,10 @@ impl Assignment for HashMapAssignment {
 /// Allows for a rough dynamic dispatch.
 #[derive(Clone, Debug)]
 pub enum AssignmentImpls {
-    /// Vec assignment wrapper
+    /// `Vec` assignment wrapper
     Vec(VecAssignment),
 
-    /// HashMap assignment wrapper
+    /// `HashMap` assignment wrapper
     HashMap(HashMapAssignment),
 }
 

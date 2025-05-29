@@ -1,0 +1,366 @@
+#compdef sat_solver
+
+autoload -U is-at-least
+
+_sat_solver() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--solver=[Specifies the SAT solver algorithm to use. Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland)]:SOLVER:((dpll\:"A DPLL-based SAT solver"
+cdcl\:"A CDCL-based SAT solver"))' \
+'--restart-strategy=[]:RESTART_STRATEGY:((luby\:"The Luby restart strategy, which uses the Luby sequence for determining restart intervals"
+geometric\:"A geometric restart strategy, where the interval between restarts is multiplied by a constant factor \`N\`"
+fixed\:"A fixed interval restart strategy, where restarts occur every \`N\` conflicts (or other units)"
+linear\:"A linear restart strategy, where the interval between restarts increases by a fixed amount \`N\` after each restart"
+never\:"A strategy that never triggers a restart"))' \
+'--variable-selection=[]:VARIABLE_SELECTION:((vsids\:"VSIDS (Variable State Independent Decaying Sum) selection strategy"
+vsids-heap\:"VSIDS with a binary heap for efficient selection"
+fixed-order\:"Fixed order selection strategy, iterating through variables in a fixed order"
+random-order\:"Random order selection strategy, picking variables in a random order"
+jeroslow-wang-one-sided\:"Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths"
+jeroslow-wang-two-sided\:"Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities"))' \
+'--literal-storage=[]:LITERAL_STORAGE:((vec\:"Uses a standard \`Vec\` to store literals"
+small-vec\:"Uses a \`SmallVec\` to store literals, optimised for small collections"))' \
+'--assignment=[]:ASSIGNMENT:((vec\:"Use a \`Vec<VarState>\` for dense variable sets"
+hash-map\:"Use an \`FxHashMap<Variable, VarState>\` for sparse or non-contiguous variable sets"))' \
+'--propagator=[]:PROPAGATOR:((watched-literals\:"Watched literals propagator, which uses the watched literals scheme for efficient unit propagation"
+unit-search\:"Unit search propagator, which iterates through clauses to find unit clauses"
+unit-propagation-with-pure-literals\:"Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals"))' \
+'--literals=[]:LITERALS:((packed\:"A packed literal using bit manipulation for memory efficiency"
+struct\:"A struct-based literal with separate fields for variable and polarity"
+double\:"A double literal represented as \`2*variable + polarity_bit\`"
+negative\:"A negative literal represented as a signed integer (DIMACS-style)"))' \
+'-d[Enable debug output, providing more verbose logging during the solving process]' \
+'--debug[Enable debug output, providing more verbose logging during the solving process]' \
+'-v[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'--verify[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'-s[Enable printing of performance and problem statistics after solving]' \
+'--stats[Enable printing of performance and problem statistics after solving]' \
+'-p[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--print-solution[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--no-clause-management[Disable clause management, which may affect the solver'\''s performance and memory usage]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::path -- An optional global path argument. If provided without a subcommand, it'\''s treated as the path to a DIMACS .cnf file to solve:_files' \
+":: :_sat_solver_commands" \
+"*::: :->sat_solver" \
+&& ret=0
+    case $state in
+    (sat_solver)
+        words=($line[2] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sat_solver-command-$line[2]:"
+        case $line[2] in
+            (file)
+_arguments "${_arguments_options[@]}" : \
+'--path=[Path to the DIMACS .cnf file]:PATH:_files' \
+'--solver=[Specifies the SAT solver algorithm to use. Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland)]:SOLVER:((dpll\:"A DPLL-based SAT solver"
+cdcl\:"A CDCL-based SAT solver"))' \
+'--restart-strategy=[]:RESTART_STRATEGY:((luby\:"The Luby restart strategy, which uses the Luby sequence for determining restart intervals"
+geometric\:"A geometric restart strategy, where the interval between restarts is multiplied by a constant factor \`N\`"
+fixed\:"A fixed interval restart strategy, where restarts occur every \`N\` conflicts (or other units)"
+linear\:"A linear restart strategy, where the interval between restarts increases by a fixed amount \`N\` after each restart"
+never\:"A strategy that never triggers a restart"))' \
+'--variable-selection=[]:VARIABLE_SELECTION:((vsids\:"VSIDS (Variable State Independent Decaying Sum) selection strategy"
+vsids-heap\:"VSIDS with a binary heap for efficient selection"
+fixed-order\:"Fixed order selection strategy, iterating through variables in a fixed order"
+random-order\:"Random order selection strategy, picking variables in a random order"
+jeroslow-wang-one-sided\:"Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths"
+jeroslow-wang-two-sided\:"Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities"))' \
+'--literal-storage=[]:LITERAL_STORAGE:((vec\:"Uses a standard \`Vec\` to store literals"
+small-vec\:"Uses a \`SmallVec\` to store literals, optimised for small collections"))' \
+'--assignment=[]:ASSIGNMENT:((vec\:"Use a \`Vec<VarState>\` for dense variable sets"
+hash-map\:"Use an \`FxHashMap<Variable, VarState>\` for sparse or non-contiguous variable sets"))' \
+'--propagator=[]:PROPAGATOR:((watched-literals\:"Watched literals propagator, which uses the watched literals scheme for efficient unit propagation"
+unit-search\:"Unit search propagator, which iterates through clauses to find unit clauses"
+unit-propagation-with-pure-literals\:"Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals"))' \
+'--literals=[]:LITERALS:((packed\:"A packed literal using bit manipulation for memory efficiency"
+struct\:"A struct-based literal with separate fields for variable and polarity"
+double\:"A double literal represented as \`2*variable + polarity_bit\`"
+negative\:"A negative literal represented as a signed integer (DIMACS-style)"))' \
+'-d[Enable debug output, providing more verbose logging during the solving process]' \
+'--debug[Enable debug output, providing more verbose logging during the solving process]' \
+'-v[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'--verify[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'-s[Enable printing of performance and problem statistics after solving]' \
+'--stats[Enable printing of performance and problem statistics after solving]' \
+'-p[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--print-solution[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--no-clause-management[Disable clause management, which may affect the solver'\''s performance and memory usage]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(text)
+_arguments "${_arguments_options[@]}" : \
+'-i+[Literal CNF input as a string (e.g. "1 -2 0\\n2 3 0"). Each line represents a clause, literals are space-separated, and 0 terminates a clause]:INPUT:_default' \
+'--input=[Literal CNF input as a string (e.g. "1 -2 0\\n2 3 0"). Each line represents a clause, literals are space-separated, and 0 terminates a clause]:INPUT:_default' \
+'--solver=[Specifies the SAT solver algorithm to use. Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland)]:SOLVER:((dpll\:"A DPLL-based SAT solver"
+cdcl\:"A CDCL-based SAT solver"))' \
+'--restart-strategy=[]:RESTART_STRATEGY:((luby\:"The Luby restart strategy, which uses the Luby sequence for determining restart intervals"
+geometric\:"A geometric restart strategy, where the interval between restarts is multiplied by a constant factor \`N\`"
+fixed\:"A fixed interval restart strategy, where restarts occur every \`N\` conflicts (or other units)"
+linear\:"A linear restart strategy, where the interval between restarts increases by a fixed amount \`N\` after each restart"
+never\:"A strategy that never triggers a restart"))' \
+'--variable-selection=[]:VARIABLE_SELECTION:((vsids\:"VSIDS (Variable State Independent Decaying Sum) selection strategy"
+vsids-heap\:"VSIDS with a binary heap for efficient selection"
+fixed-order\:"Fixed order selection strategy, iterating through variables in a fixed order"
+random-order\:"Random order selection strategy, picking variables in a random order"
+jeroslow-wang-one-sided\:"Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths"
+jeroslow-wang-two-sided\:"Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities"))' \
+'--literal-storage=[]:LITERAL_STORAGE:((vec\:"Uses a standard \`Vec\` to store literals"
+small-vec\:"Uses a \`SmallVec\` to store literals, optimised for small collections"))' \
+'--assignment=[]:ASSIGNMENT:((vec\:"Use a \`Vec<VarState>\` for dense variable sets"
+hash-map\:"Use an \`FxHashMap<Variable, VarState>\` for sparse or non-contiguous variable sets"))' \
+'--propagator=[]:PROPAGATOR:((watched-literals\:"Watched literals propagator, which uses the watched literals scheme for efficient unit propagation"
+unit-search\:"Unit search propagator, which iterates through clauses to find unit clauses"
+unit-propagation-with-pure-literals\:"Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals"))' \
+'--literals=[]:LITERALS:((packed\:"A packed literal using bit manipulation for memory efficiency"
+struct\:"A struct-based literal with separate fields for variable and polarity"
+double\:"A double literal represented as \`2*variable + polarity_bit\`"
+negative\:"A negative literal represented as a signed integer (DIMACS-style)"))' \
+'-d[Enable debug output, providing more verbose logging during the solving process]' \
+'--debug[Enable debug output, providing more verbose logging during the solving process]' \
+'-v[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'--verify[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'-s[Enable printing of performance and problem statistics after solving]' \
+'--stats[Enable printing of performance and problem statistics after solving]' \
+'-p[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--print-solution[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--no-clause-management[Disable clause management, which may affect the solver'\''s performance and memory usage]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::path -- An optional global path argument. If provided without a subcommand, it'\''s treated as the path to a DIMACS .cnf file to solve:_files' \
+&& ret=0
+;;
+(sudoku)
+_arguments "${_arguments_options[@]}" : \
+'--path=[Path to the Sudoku file. The format of this file is defined by the \`sudoku\:\:solver\:\:parse_sudoku_file\` function]:PATH:_files' \
+'--solver=[Specifies the SAT solver algorithm to use. Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland)]:SOLVER:((dpll\:"A DPLL-based SAT solver"
+cdcl\:"A CDCL-based SAT solver"))' \
+'--restart-strategy=[]:RESTART_STRATEGY:((luby\:"The Luby restart strategy, which uses the Luby sequence for determining restart intervals"
+geometric\:"A geometric restart strategy, where the interval between restarts is multiplied by a constant factor \`N\`"
+fixed\:"A fixed interval restart strategy, where restarts occur every \`N\` conflicts (or other units)"
+linear\:"A linear restart strategy, where the interval between restarts increases by a fixed amount \`N\` after each restart"
+never\:"A strategy that never triggers a restart"))' \
+'--variable-selection=[]:VARIABLE_SELECTION:((vsids\:"VSIDS (Variable State Independent Decaying Sum) selection strategy"
+vsids-heap\:"VSIDS with a binary heap for efficient selection"
+fixed-order\:"Fixed order selection strategy, iterating through variables in a fixed order"
+random-order\:"Random order selection strategy, picking variables in a random order"
+jeroslow-wang-one-sided\:"Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths"
+jeroslow-wang-two-sided\:"Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities"))' \
+'--literal-storage=[]:LITERAL_STORAGE:((vec\:"Uses a standard \`Vec\` to store literals"
+small-vec\:"Uses a \`SmallVec\` to store literals, optimised for small collections"))' \
+'--assignment=[]:ASSIGNMENT:((vec\:"Use a \`Vec<VarState>\` for dense variable sets"
+hash-map\:"Use an \`FxHashMap<Variable, VarState>\` for sparse or non-contiguous variable sets"))' \
+'--propagator=[]:PROPAGATOR:((watched-literals\:"Watched literals propagator, which uses the watched literals scheme for efficient unit propagation"
+unit-search\:"Unit search propagator, which iterates through clauses to find unit clauses"
+unit-propagation-with-pure-literals\:"Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals"))' \
+'--literals=[]:LITERALS:((packed\:"A packed literal using bit manipulation for memory efficiency"
+struct\:"A struct-based literal with separate fields for variable and polarity"
+double\:"A double literal represented as \`2*variable + polarity_bit\`"
+negative\:"A negative literal represented as a signed integer (DIMACS-style)"))' \
+'-e[If true, the generated DIMACS CNF representation of the Sudoku puzzle will be printed and saved to a file]' \
+'--export-dimacs[If true, the generated DIMACS CNF representation of the Sudoku puzzle will be printed and saved to a file]' \
+'-d[Enable debug output, providing more verbose logging during the solving process]' \
+'--debug[Enable debug output, providing more verbose logging during the solving process]' \
+'-v[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'--verify[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'-s[Enable printing of performance and problem statistics after solving]' \
+'--stats[Enable printing of performance and problem statistics after solving]' \
+'-p[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--print-solution[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--no-clause-management[Disable clause management, which may affect the solver'\''s performance and memory usage]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(nonogram)
+_arguments "${_arguments_options[@]}" : \
+'--path=[Path to the Nonogram file. The format of this file is defined by the \`nonogram\:\:solver\:\:parse_nonogram_file\` function]:PATH:_files' \
+'--solver=[Specifies the SAT solver algorithm to use. Supported values are "cdcl" (Conflict-Driven Clause Learning) and "dpll" (Davis-Putnam-Logemann-Loveland)]:SOLVER:((dpll\:"A DPLL-based SAT solver"
+cdcl\:"A CDCL-based SAT solver"))' \
+'--restart-strategy=[]:RESTART_STRATEGY:((luby\:"The Luby restart strategy, which uses the Luby sequence for determining restart intervals"
+geometric\:"A geometric restart strategy, where the interval between restarts is multiplied by a constant factor \`N\`"
+fixed\:"A fixed interval restart strategy, where restarts occur every \`N\` conflicts (or other units)"
+linear\:"A linear restart strategy, where the interval between restarts increases by a fixed amount \`N\` after each restart"
+never\:"A strategy that never triggers a restart"))' \
+'--variable-selection=[]:VARIABLE_SELECTION:((vsids\:"VSIDS (Variable State Independent Decaying Sum) selection strategy"
+vsids-heap\:"VSIDS with a binary heap for efficient selection"
+fixed-order\:"Fixed order selection strategy, iterating through variables in a fixed order"
+random-order\:"Random order selection strategy, picking variables in a random order"
+jeroslow-wang-one-sided\:"Jeroslow-Wang one-sided selection strategy, scoring literals based on clause lengths"
+jeroslow-wang-two-sided\:"Jeroslow-Wang two-sided selection strategy, scoring variables based on both polarities"))' \
+'--literal-storage=[]:LITERAL_STORAGE:((vec\:"Uses a standard \`Vec\` to store literals"
+small-vec\:"Uses a \`SmallVec\` to store literals, optimised for small collections"))' \
+'--assignment=[]:ASSIGNMENT:((vec\:"Use a \`Vec<VarState>\` for dense variable sets"
+hash-map\:"Use an \`FxHashMap<Variable, VarState>\` for sparse or non-contiguous variable sets"))' \
+'--propagator=[]:PROPAGATOR:((watched-literals\:"Watched literals propagator, which uses the watched literals scheme for efficient unit propagation"
+unit-search\:"Unit search propagator, which iterates through clauses to find unit clauses"
+unit-propagation-with-pure-literals\:"Unit propagation with pure literals, which combines unit propagation with the heuristic of assigning pure literals"))' \
+'--literals=[]:LITERALS:((packed\:"A packed literal using bit manipulation for memory efficiency"
+struct\:"A struct-based literal with separate fields for variable and polarity"
+double\:"A double literal represented as \`2*variable + polarity_bit\`"
+negative\:"A negative literal represented as a signed integer (DIMACS-style)"))' \
+'-d[Enable debug output, providing more verbose logging during the solving process]' \
+'--debug[Enable debug output, providing more verbose logging during the solving process]' \
+'-v[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'--verify[Enable verification of the found solution. If a solution is found, it'\''s checked against the original CNF]' \
+'-s[Enable printing of performance and problem statistics after solving]' \
+'--stats[Enable printing of performance and problem statistics after solving]' \
+'-p[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--print-solution[Enable printing of the satisfying assignment (model) if the formula is satisfiable]' \
+'--no-clause-management[Disable clause management, which may affect the solver'\''s performance and memory usage]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+':shell -- The shell to generate completions for:(bash elvish fish powershell zsh)' \
+'::path -- An optional global path argument. If provided without a subcommand, it'\''s treated as the path to a DIMACS .cnf file to solve:_files' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_sat_solver__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sat_solver-help-command-$line[1]:"
+        case $line[1] in
+            (file)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(text)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(sudoku)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(nonogram)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_sat_solver_commands] )) ||
+_sat_solver_commands() {
+    local commands; commands=(
+'file:Solve a CNF file in DIMACS format' \
+'text:Solve a CNF formula provided as plain text' \
+'sudoku:Solve a Sudoku puzzle. The Sudoku puzzle is converted into a CNF formula, which is then solved' \
+'nonogram:Solve a Nonogram puzzle. The Nonogram puzzle is converted into a CNF formula, which is then solved' \
+'completions:Generate shell completion scripts' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'sat_solver commands' commands "$@"
+}
+(( $+functions[_sat_solver__completions_commands] )) ||
+_sat_solver__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver completions commands' commands "$@"
+}
+(( $+functions[_sat_solver__file_commands] )) ||
+_sat_solver__file_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver file commands' commands "$@"
+}
+(( $+functions[_sat_solver__help_commands] )) ||
+_sat_solver__help_commands() {
+    local commands; commands=(
+'file:Solve a CNF file in DIMACS format' \
+'text:Solve a CNF formula provided as plain text' \
+'sudoku:Solve a Sudoku puzzle. The Sudoku puzzle is converted into a CNF formula, which is then solved' \
+'nonogram:Solve a Nonogram puzzle. The Nonogram puzzle is converted into a CNF formula, which is then solved' \
+'completions:Generate shell completion scripts' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'sat_solver help commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__completions_commands] )) ||
+_sat_solver__help__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help completions commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__file_commands] )) ||
+_sat_solver__help__file_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help file commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__help_commands] )) ||
+_sat_solver__help__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help help commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__nonogram_commands] )) ||
+_sat_solver__help__nonogram_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help nonogram commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__sudoku_commands] )) ||
+_sat_solver__help__sudoku_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help sudoku commands' commands "$@"
+}
+(( $+functions[_sat_solver__help__text_commands] )) ||
+_sat_solver__help__text_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver help text commands' commands "$@"
+}
+(( $+functions[_sat_solver__nonogram_commands] )) ||
+_sat_solver__nonogram_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver nonogram commands' commands "$@"
+}
+(( $+functions[_sat_solver__sudoku_commands] )) ||
+_sat_solver__sudoku_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver sudoku commands' commands "$@"
+}
+(( $+functions[_sat_solver__text_commands] )) ||
+_sat_solver__text_commands() {
+    local commands; commands=()
+    _describe -t commands 'sat_solver text commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_sat_solver" ]; then
+    _sat_solver "$@"
+else
+    compdef _sat_solver sat_solver
+fi

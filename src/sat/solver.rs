@@ -19,12 +19,12 @@ use crate::sat::literal::{Literal, LiteralImpls, PackedLiteral};
 use crate::sat::propagation::{PropagatorImpls, WatchedLiterals};
 use crate::sat::restarter::{Luby, RestarterImpls};
 use crate::sat::variable_selection::{VariableSelectionImpls, Vsids};
+use clap::ValueEnum;
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroI32;
-use clap::ValueEnum;
 
 /// Contains statistics about a SAT solver's execution.
 ///
@@ -271,10 +271,10 @@ macro_rules! solver_config {
     };
 }
 
-use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls};
-pub use solver_config;
 use crate::sat::cdcl::Cdcl;
+use crate::sat::clause_storage::{LiteralStorage, LiteralStorageImpls};
 use crate::sat::dpll::Dpll;
+pub use solver_config;
 
 solver_config!(
     DefaultConfig {
@@ -358,14 +358,14 @@ pub trait Solver<C: SolverConfig = DefaultConfig> {
 
 /// An enum representing different implementations of SAT solvers.
 #[derive(Debug, Clone)]
-pub enum SolverImpls <C: SolverConfig = DynamicConfig> {
+pub enum SolverImpls<C: SolverConfig = DynamicConfig> {
     /// A DPLL-based SAT solver.
     Dpll(Box<Dpll<C>>),
     /// A CDCL-based SAT solver.
     Cdcl(Box<Cdcl<C>>),
 }
 
-impl <C: SolverConfig> Solver<C> for SolverImpls<C> {
+impl<C: SolverConfig> Solver<C> for SolverImpls<C> {
     fn new<L: Literal, S: LiteralStorage<L>>(cnf: Cnf<L, S>) -> Self {
         let cnf: Cnf<C::Literal, C::LiteralStorage> = cnf.convert();
         let cdcl = Cdcl::new(cnf);
@@ -432,8 +432,6 @@ impl Display for SolverType {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

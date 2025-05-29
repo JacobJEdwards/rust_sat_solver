@@ -444,6 +444,7 @@ impl Display for LiteralStorageType {
 
 impl LiteralStorageType {
     /// Returns the name of the storage type as a string.
+    #[allow(dead_code)]
     #[must_use]
     pub fn to_impl<L: Literal, const N: usize>(self) -> LiteralStorageImpls<L, N> {
         match self {

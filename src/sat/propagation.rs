@@ -670,7 +670,7 @@ impl PropagatorType {
     /// Converts the `PropagatorType` to a specific propagator implementation.
     #[must_use]
     pub fn to_impl<L: Literal, S: LiteralStorage<L>, A: Assignment>(
-        &self,
+        self,
         cnf: &Cnf<L, S>,
     ) -> PropagatorImpls<L, S, A> {
         match self {

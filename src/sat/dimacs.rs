@@ -22,6 +22,26 @@ use itertools::Itertools; // For `collect_vec`
 use std::io::{self, BufRead};
 use std::path::PathBuf;
 
+/// Parses a DIMACS CNF file from a `BufRead` source.
+/// 
+/// This function is a convenience wrapper around `parse_dimacs`.
+/// It reads the input from a string slice, which is useful for testing or
+/// when the DIMACS data is available as a string.
+/// 
+/// # Type Parameters
+/// * `L`: The `Literal` type to be used in the resulting `Cnf`.
+/// * `S`: The `LiteralStorage` type for clauses in the resulting `Cnf`.
+/// # Arguments
+/// * `dimacs_text`: A string slice containing the DIMACS CNF data.
+/// # Errors
+/// - If parsing fails due to malformed input (e.g. non-integer literals, missing terminators).
+pub fn parse_dimacs_text<L: Literal, S: LiteralStorage<L>>(
+    dimacs_text: &str,
+) -> Result<Cnf<L, S>, String> {
+    let reader = io::Cursor::new(dimacs_text);
+    parse_dimacs(reader)
+}
+
 /// Parses DIMACS formatted data from a `BufRead` source into a `Cnf` structure.
 ///
 /// It reads the input line by line:
@@ -46,7 +66,12 @@ use std::path::PathBuf;
 ///
 /// A `Cnf<L, S>` structure representing the parsed formula.
 /// Or `None` if no clauses were found (e.g. empty file or only comments).
-pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> Cnf<L, S> {
+/// 
+/// # Errors
+/// Returns `()` if parsing fails due to malformed input (e.g. non-integer literals, missing terminators).
+pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(
+    reader: R,
+) -> Result<Cnf<L, S>, String> {
     let mut lines = reader
         .lines()
         .map_while(Result::ok)
@@ -75,7 +100,7 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
             }
         }
     }
-    Cnf::new(clauses_dimacs)
+    Ok(Cnf::new(clauses_dimacs))
 }
 
 /// Parses a DIMACS CNF file specified by its path.
@@ -103,7 +128,19 @@ pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(reader: R) -> 
 pub fn parse_file<T: Literal, S: LiteralStorage<T>>(file_path: &PathBuf) -> io::Result<Cnf<T, S>> {
     let file = std::fs::File::open(file_path)?;
     let reader = io::BufReader::new(file);
-    Ok(parse_dimacs(reader))
+    let cnf: Cnf<T, S> = parse_dimacs(reader).map_err(|s| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Failed to parse DIMACS file: {}, {s}", file_path.display()),
+        )
+    })?;
+    if cnf.clauses.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("No clauses found in DIMACS file: {}", file_path.display()),
+        ));
+    }
+    Ok(cnf)
 }
 
 /// Recursively finds all files in a directory and its subdirectories.
@@ -156,7 +193,7 @@ pub fn get_all_files(dir_path: &str) -> io::Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sat::literal::PackedLiteral;
+    use crate::sat::literal::{DoubleLiteral, PackedLiteral};
     use std::io::Cursor;
 
     type TestCnf = Cnf<PackedLiteral, smallvec::SmallVec<[PackedLiteral; 8]>>;
@@ -168,7 +205,9 @@ mod tests {
                               1 -2 0\n\
                               2 3 0\n";
         let reader = Cursor::new(dimacs_content);
-        let cnf: TestCnf = parse_dimacs(reader);
+        let result = parse_dimacs(reader);
+        assert!(result.is_ok(), "Parsing should succeed");
+        let cnf: TestCnf = result.unwrap();
 
         assert_eq!(cnf.clauses.len(), 2, "Should parse 2 clauses");
         assert_eq!(cnf.num_vars, 3 + 1, "Number of variables mismatch");
@@ -200,7 +239,9 @@ mod tests {
                               %\n\
                               c this should be ignored";
         let reader = Cursor::new(dimacs_content);
-        let cnf: TestCnf = parse_dimacs(reader);
+        let result = parse_dimacs(reader);
+        assert!(result.is_ok(), "Parsing should succeed");
+        let cnf: TestCnf = result.unwrap();
 
         assert_eq!(cnf.clauses.len(), 2);
         assert_eq!(cnf.num_vars, 2 + 1);
@@ -212,24 +253,34 @@ mod tests {
     fn test_parse_dimacs_empty_clause() {
         let dimacs_content = "p cnf 1 1\n0\n";
         let reader = Cursor::new(dimacs_content);
-        let cnf: TestCnf = parse_dimacs(reader);
+        let result = parse_dimacs(reader);
+        assert!(result.is_ok(), "Parsing should succeed");
+        let cnf: TestCnf = result.unwrap();
 
         assert_eq!(cnf.clauses.len(), 0, "Should parse 0 clauses");
     }
 
     #[test]
-    #[should_panic(expected = "Failed to parse literal 'abc' as i32")]
     fn test_parse_dimacs_malformed_literal() {
         let dimacs_content = "1 abc 0\n";
         let reader = Cursor::new(dimacs_content);
-        let _cnf: TestCnf = parse_dimacs(reader);
+        let result: Result<Cnf<DoubleLiteral, Vec<DoubleLiteral>>, String> = parse_dimacs(reader);
+        assert!(
+            result.is_err(),
+            "Parsing should fail due to malformed literal"
+        );
     }
 
     #[test]
     fn test_parse_dimacs_no_clauses() {
         let dimacs_content = "p cnf 0 0\n";
         let reader = Cursor::new(dimacs_content);
-        let cnf: TestCnf = parse_dimacs(reader);
+        let result = parse_dimacs(reader);
+        assert!(
+            result.is_ok(),
+            "Parsing should succeed even with no clauses"
+        );
+        let cnf: TestCnf = result.unwrap();
         assert!(cnf.clauses.is_empty());
         assert_eq!(cnf.num_vars, 1);
     }
