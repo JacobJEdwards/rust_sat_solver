@@ -129,10 +129,10 @@ pub trait SolverConfig: Debug + Clone {
     type VariableSelector: crate::sat::variable_selection::VariableSelection<Self::Literal>;
     /// The type used to represent literals (e.g. `PackedLiteral`, `StructLiteral`).
     /// Must implement `crate::sat::literal::Literal`.
-    type Literal: crate::sat::literal::Literal;
+    type Literal: Literal;
     /// The type used for storing literals within a clause (e.g. `Vec<L>`, `SmallVec<[L; N]>`).
     /// Must implement `crate::sat::clause_storage::LiteralStorage`.
-    type LiteralStorage: crate::sat::clause_storage::LiteralStorage<Self::Literal>;
+    type LiteralStorage: LiteralStorage<Self::Literal>;
     /// The type used for the restart strategy (e.g. `Luby`, `Geometric`).
     /// Must implement `crate::sat::restarter::Restarter`.
     type Restarter: crate::sat::restarter::Restarter;

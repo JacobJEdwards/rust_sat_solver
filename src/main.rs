@@ -105,10 +105,10 @@ use crate::command_line::cli::{Cli, Commands, solve_and_report, solve_dir, solve
 use crate::sat::dimacs::{parse_dimacs_text, parse_file};
 use clap::{CommandFactory, Parser};
 
-mod command_line;
-mod nonogram;
-mod sat;
-mod sudoku;
+pub mod command_line;
+pub mod nonogram;
+pub mod sat;
+pub mod sudoku;
 
 /// Global allocator using `tikv-jemallocator` for potentially better performance
 /// and memory usage tracking.

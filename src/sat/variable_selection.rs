@@ -22,7 +22,6 @@ use crate::sat::literal::Literal;
 use clap::ValueEnum;
 use fastrand::Rng;
 use ordered_float::OrderedFloat;
-use std::cell::RefCell;
 use std::collections::BinaryHeap;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
@@ -438,9 +437,7 @@ pub struct FixedOrder {
     /// The total number of variables in the problem.
     var_count: usize,
     /// Random number generator used for selecting polarity.
-    /// `RefCell` is used to allow mutable access to `Rng` in `pick` method,
-    /// which takes `&mut self`.
-    rand: RefCell<Rng>,
+    rand: Rng,
     /// Counter for the number of decisions made by this strategy.
     num_decisions: usize,
 }
@@ -452,7 +449,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
     fn new<C: AsRef<[L]>>(num_vars: usize, _: &[L], _: &[C]) -> Self {
         Self {
             var_count: num_vars,
-            rand: RefCell::new(Rng::with_seed(0)), // fixed seed for deterministic behavior
+            rand: Rng::with_seed(0), // fixed seed for deterministic behavior
             num_decisions: 0,
         }
     }
@@ -464,8 +461,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
         #![allow(clippy::cast_possible_truncation)]
         (1..self.var_count as u32).find_map(|v| {
             if assignment[v as usize].is_unassigned() {
-                let mut rng = self.rand.borrow_mut();
-                let polarity = rng.bool();
+                let polarity = self.rand.bool();
                 let lit = L::new(v, polarity);
                 self.num_decisions = self.num_decisions.wrapping_add(1);
                 Some(lit)
@@ -499,7 +495,7 @@ impl<L: Literal> VariableSelection<L> for FixedOrder {
 pub struct RandomOrder {
     /// Random number generator for selecting polarity and initial shuffling.
     /// `RefCell` for mutable access in `pick`.
-    rand: RefCell<Rng>,
+    rand: Rng,
     /// A list of variable indices, shuffled once at initialisation.
     /// The `pick` method iterates through this list.
     /// Indices stored here are typically 0-indexed if `num_vars` in `new` is count.
@@ -522,7 +518,7 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
 
         Self {
             vars: indices,
-            rand: RefCell::new(Rng::new()),
+            rand: Rng::new(),
             num_decisions: 0,
         }
     }
@@ -534,11 +530,9 @@ impl<L: Literal> VariableSelection<L> for RandomOrder {
     fn pick<A: Assignment>(&mut self, assignment: &A) -> Option<L> {
         #![allow(clippy::cast_possible_truncation)]
 
-        let mut rng = self.rand.borrow_mut();
-
         for &var_idx in &self.vars {
             if assignment[var_idx].is_unassigned() {
-                let polarity = rng.bool();
+                let polarity = self.rand.bool();
                 self.num_decisions = self.num_decisions.wrapping_add(1);
                 return Some(L::new(var_idx as u32, polarity));
             }
@@ -619,7 +613,7 @@ pub struct JeroslowWangOneSided {
     /// These scores are typically initialised based on clause lengths and do not decay.
     scores: Vec<f64>,
     /// Random number generator, used for the 10% chance of flipping polarity.
-    rand: RefCell<Rng>,
+    rand: Rng,
     /// Counter for the number of decisions made by this strategy.
     num_decisions: usize,
 }
@@ -633,7 +627,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
 
         Self {
             scores,
-            rand: RefCell::new(Rng::with_seed(0)),
+            rand: Rng::with_seed(0),
             num_decisions: 0,
         }
     }
@@ -659,7 +653,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangOneSided {
         best_lit.map(|lit| {
             self.num_decisions = self.num_decisions.wrapping_add(1);
 
-            if self.rand.borrow_mut().f64() < 0.1 {
+            if self.rand.f64() < 0.1 {
                 lit.negated()
             } else {
                 lit
@@ -695,7 +689,7 @@ pub struct JeroslowWangTwoSided {
     /// The total number of variables in the problem.
     num_vars: usize,
     /// Random number generator, used for tie-breaking polarity and the 10% polarity flip.
-    rand: RefCell<Rng>,
+    rand: Rng,
     /// Counter for the number of decisions made by this strategy.
     num_decisions: usize,
 }
@@ -710,7 +704,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
         Self {
             scores,
             num_vars,
-            rand: RefCell::new(Rng::with_seed(0)),
+            rand: Rng::with_seed(0),
             num_decisions: 0,
         }
     }
@@ -749,18 +743,15 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
                     L::from_index(ng_lit_idx)
                 } else if neg_score < pos_score {
                     L::from_index(pos_lit_idx)
+                } else if self.rand.bool() {
+                    L::from_index(ng_lit_idx)
                 } else {
-                    let mut rng = self.rand.borrow_mut();
-                    if rng.bool() {
-                        L::from_index(ng_lit_idx)
-                    } else {
-                        L::from_index(pos_lit_idx)
-                    }
+                    L::from_index(pos_lit_idx)
                 }
             })
             .map(|lit| {
                 self.num_decisions = self.num_decisions.wrapping_add(1);
-                if self.rand.borrow_mut().f64() < 0.1 {
+                if self.rand.f64() < 0.1 {
                     lit.negated()
                 } else {
                     lit
@@ -786,7 +777,7 @@ impl<L: Literal> VariableSelection<L> for JeroslowWangTwoSided {
 #[derive(Debug, Clone)]
 pub enum VariableSelectionImpls {
     /// VSIDS with a vector.
-    VSIDS(Vsids),
+    Vsids(Vsids),
     /// VSIDS with a binary heap.
     VsidsHeap(VsidsHeap),
     /// Fixed order variable selection.
@@ -801,12 +792,12 @@ pub enum VariableSelectionImpls {
 
 impl<L: Literal> VariableSelection<L> for VariableSelectionImpls {
     fn new<C: AsRef<[L]>>(num_vars: usize, lits: &[L], clauses: &[C]) -> Self {
-        Self::VSIDS(Vsids::<false>::new(num_vars, lits, clauses))
+        Self::Vsids(Vsids::<false>::new(num_vars, lits, clauses))
     }
 
     fn pick<A: Assignment>(&mut self, assignment: &A) -> Option<L> {
         match self {
-            Self::VSIDS(vsids) => vsids.pick(assignment),
+            Self::Vsids(vsids) => vsids.pick(assignment),
             Self::VsidsHeap(vsids_heap) => vsids_heap.pick(assignment),
             Self::FixedOrder(fixed_order) => fixed_order.pick(assignment),
             Self::RandomOrder(random_order) => random_order.pick(assignment),
@@ -817,7 +808,7 @@ impl<L: Literal> VariableSelection<L> for VariableSelectionImpls {
 
     fn bumps<T: IntoIterator<Item = L>>(&mut self, vars: T) {
         match self {
-            Self::VSIDS(vsids) => vsids.bumps(vars),
+            Self::Vsids(vsids) => vsids.bumps(vars),
             Self::VsidsHeap(vsids_heap) => vsids_heap.bumps(vars),
             Self::FixedOrder(fixed_order) => fixed_order.bumps(vars),
             Self::RandomOrder(random_order) => random_order.bumps(vars),
@@ -828,7 +819,7 @@ impl<L: Literal> VariableSelection<L> for VariableSelectionImpls {
 
     fn decay(&mut self, decay: f64) {
         match self {
-            Self::VSIDS(vsids) => <Vsids as VariableSelection<L>>::decay(vsids, decay),
+            Self::Vsids(vsids) => <Vsids as VariableSelection<L>>::decay(vsids, decay),
             Self::VsidsHeap(vsids_heap) => {
                 <VsidsHeap as VariableSelection<L>>::decay(vsids_heap, decay);
             }
@@ -849,7 +840,7 @@ impl<L: Literal> VariableSelection<L> for VariableSelectionImpls {
 
     fn decisions(&self) -> usize {
         match self {
-            Self::VSIDS(vsids) => <Vsids as VariableSelection<L>>::decisions(vsids),
+            Self::Vsids(vsids) => <Vsids as VariableSelection<L>>::decisions(vsids),
             Self::VsidsHeap(vsids_heap) => {
                 <VsidsHeap as VariableSelection<L>>::decisions(vsids_heap)
             }
@@ -910,7 +901,7 @@ impl VariableSelectionType {
     ) -> VariableSelectionImpls {
         match self {
             Self::Vsids => {
-                VariableSelectionImpls::VSIDS(Vsids::<false>::new(num_vars, lits, clauses))
+                VariableSelectionImpls::Vsids(Vsids::<false>::new(num_vars, lits, clauses))
             }
             Self::VsidsHeap => {
                 VariableSelectionImpls::VsidsHeap(VsidsHeap::new(num_vars, lits, clauses))

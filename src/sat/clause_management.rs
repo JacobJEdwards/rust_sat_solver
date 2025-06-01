@@ -1,4 +1,5 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+#![allow(clippy::similar_names)]
 //! This module defines strategies for managing the clause database in a SAT solver.
 //!
 //! Clause management is crucial for the performance of modern SAT solvers, especially

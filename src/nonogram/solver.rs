@@ -366,10 +366,7 @@ fn generate_recursive(
             solutions,
         );
 
-        for i in pos..current_pattern
-            .len()
-            .min(pos + original_pattern_slice.len())
-        {
+        for i in pos..current_pattern.len().min(pos + original_pattern_slice.len()) {
             current_pattern[i] = original_pattern_slice[i - pos];
         }
         if end_pos < size {

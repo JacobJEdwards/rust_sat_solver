@@ -1,3 +1,5 @@
+#![allow(dead_code, clippy::cast_precision_loss)]
+
 use crate::sat::assignment::{AssignmentImpls, AssignmentType};
 use crate::sat::cdcl::Cdcl;
 use crate::sat::clause_management::{
@@ -480,7 +482,7 @@ pub(crate) fn print_stats(
 ///
 /// # Errors
 ///
-/// If the sudoku doesnt exist.
+/// If the sudoku doesn't exist.
 pub(crate) fn solve_sudoku(
     path: &PathBuf,
     export_dimacs: bool,
