@@ -474,14 +474,9 @@ impl Sudoku {
     pub fn new(board: Board) -> Result<Self, String> {
         let size_val = board.0.len();
         let size = Size::try_from(size_val).map_err(|()| {
-            format!(
-                "Invalid Sudoku size: {size_val}. Supported sizes are 4, 9, 16, or 25.",
-            )
+            format!("Invalid Sudoku size: {size_val}. Supported sizes are 4, 9, 16, or 25.",)
         })?;
-        Ok(Self {
-            board,
-            size
-        })
+        Ok(Self { board, size })
     }
 
     /// Decodes a `Sudoku` solution from SAT solver results.

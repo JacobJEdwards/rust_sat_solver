@@ -101,7 +101,9 @@
 //! and orchestrates the solving process based on user input.
 //! It uses modules `sat`, `sudoku`, and `nonogram` for specialised logic.
 
-use crate::command_line::cli::{Cli, Commands, solve_and_report, solve_dir, solve_nonogram, solve_sudoku, CommonOptions};
+use crate::command_line::cli::{
+    Cli, Commands, CommonOptions, solve_and_report, solve_dir, solve_nonogram, solve_sudoku,
+};
 use crate::sat::dimacs::{parse_dimacs_text, parse_file};
 use clap::{CommandFactory, Parser};
 
@@ -145,7 +147,7 @@ fn main() {
                 }
                 return;
             }
-            
+
             if path.extension().is_some_and(|ext| ext == "sudoku") {
                 if let Err(e) = solve_sudoku(path, false, &CommonOptions::default()) {
                     eprintln!("Error solving Sudoku: {}", e);

@@ -82,7 +82,7 @@ impl<L: Literal, S: LiteralStorage<L>> FromIterator<L> for Clause<L, S> {
     }
 }
 
-impl<L: Literal + Hash + Eq, S: LiteralStorage<L>> Clause<L, S> {
+impl<L: Literal, S: LiteralStorage<L>> Clause<L, S> {
     /// Creates a new clause from a slice of literals.
     ///
     /// # Arguments
@@ -502,7 +502,7 @@ impl<T: Literal, S: LiteralStorage<T>> From<&Clause<T, S>> for Vec<T> {
     }
 }
 
-impl<L: Literal + Eq + Hash, S: LiteralStorage<L>> From<Vec<i32>> for Clause<L, S> {
+impl<L: Literal, S: LiteralStorage<L>> From<Vec<i32>> for Clause<L, S> {
     /// Creates a clause from a `Vec<i32>`, where integers represent literals
     /// in DIMACS format (e.g. `1` for variable 1 true, `-2` for variable 2 false).
     ///
@@ -529,7 +529,7 @@ impl<L: Literal, S: LiteralStorage<L>> From<&Vec<L>> for Clause<L, S> {
     }
 }
 
-impl<L: Literal + Eq + Hash, S: LiteralStorage<L>> FromIterator<i32> for Clause<L, S> {
+impl<L: Literal, S: LiteralStorage<L>> FromIterator<i32> for Clause<L, S> {
     /// Creates a clause from an iterator of `i32` (DIMACS literals).
     ///
     /// This is similar to `From<Vec<i32>>`. Literals are converted from DIMACS format.

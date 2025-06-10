@@ -23,11 +23,11 @@ use std::io::{self, BufRead};
 use std::path::PathBuf;
 
 /// Parses a DIMACS CNF file from a `BufRead` source.
-/// 
+///
 /// This function is a convenience wrapper around `parse_dimacs`.
 /// It reads the input from a string slice, which is useful for testing or
 /// when the DIMACS data is available as a string.
-/// 
+///
 /// # Type Parameters
 /// * `L`: The `Literal` type to be used in the resulting `Cnf`.
 /// * `S`: The `LiteralStorage` type for clauses in the resulting `Cnf`.
@@ -66,7 +66,7 @@ pub fn parse_dimacs_text<L: Literal, S: LiteralStorage<L>>(
 ///
 /// A `Cnf<L, S>` structure representing the parsed formula.
 /// Or `None` if no clauses were found (e.g. empty file or only comments).
-/// 
+///
 /// # Errors
 /// Returns `()` if parsing fails due to malformed input (e.g. non-integer literals, missing terminators).
 pub fn parse_dimacs<R: BufRead, L: Literal, S: LiteralStorage<L>>(

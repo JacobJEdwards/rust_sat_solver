@@ -259,10 +259,7 @@ impl SubsumptionElimination {
     }
 }
 
-impl<L: Literal + Ord, S: LiteralStorage<L>> Preprocessor<L, S> for SubsumptionElimination
-where
-    for<'a> &'a L: Ord,
-{
+impl<L: Literal, S: LiteralStorage<L>> Preprocessor<L, S> for SubsumptionElimination {
     /// Applies subsumption elimination.
     ///
     /// Iterates through pairs of clauses. If clause `C_i` subsumes `C_j`, `C_j` is marked for removal.

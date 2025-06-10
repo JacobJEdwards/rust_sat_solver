@@ -40,7 +40,9 @@ pub type Variable = u32;
 /// - Negating the literal.
 /// - Converting to/from `i32` (DIMACS-like representation).
 /// - Converting to/from a `usize` index (useful for array lookups).
-pub trait Literal: Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + PartialEq {
+pub trait Literal:
+    Copy + Debug + Eq + Hash + Default + Ord + PartialOrd + PartialEq + Send + Sync
+{
     /// Creates a new literal.
     ///
     /// # Arguments
