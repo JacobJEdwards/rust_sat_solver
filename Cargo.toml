@@ -1,6 +1,6 @@
 [package]
-name = "sat_solver"
-version = "0.1.0"
+name = "sat-solver"
+version = "0.2.0"
 edition = "2024"
 authors = ["Jacob Edwards <jacob.edwards.dev@gmail.com>"]
 description = "A SAT solver implemented in Rust, focusing on performance, efficiency and experimentation."
