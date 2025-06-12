@@ -9,7 +9,7 @@ repository = "https://github.com/jacobjedwards/rust_sat_solver"
 homepage = "https://github.com/jacobjedwards/rust_sat_solver"
 documentation = "https://docs.rs/sat_solver"
 readme = "README.md"
-keywords = ["SAT", "solver", "logic", "cnf", "dpll", "cdcl"]
+keywords = ["SAT", "solver", "logic", "dpll", "cdcl"]
 categories = ["algorithms", "science", "command-line-utilities"]
 exclude = [
     "target",
