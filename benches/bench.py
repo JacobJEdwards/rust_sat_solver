@@ -26,14 +26,14 @@ def run_sat_solver(path: Path, *, is_dpll: bool = False) -> None:
 
 def run_glucose_solver(path: Path):
     subprocess.run(
-        ["../../glucose/glucose-simp", str(path)],
+        ["../../glucose/build/glucose-simp", str(path)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
 
 
 def benchmark_solver(solver_name: str, run_fn: Callable[[Path], None], files: list[Path]):
-    print(f"\nBenchmarking {solver_name} on {len(files)} files...")
+    print(f"\nBenchmarking {solver_name} on {min(100, len(files))} files...")
 
     times = []
 
@@ -41,7 +41,7 @@ def benchmark_solver(solver_name: str, run_fn: Callable[[Path], None], files: li
         if i % 10 == 0:
             print(f"Iteration {i}...")
         start = time.perf_counter()
-        for file_path in files:
+        for file_path in files[:100]:
             run_fn(file_path)
         elapsed = time.perf_counter() - start
         times.append(elapsed)
@@ -68,9 +68,9 @@ def handle_directory(directory_path: Path) -> None:
     # benchmark_solver(
     # "SAT Solver DPLL", lambda p: run_sat_solver(p, is_dpll=True), files
     # )
+    benchmark_solver("SAT Solver", run_sat_solver, files)
     benchmark_solver("Glucose", run_glucose_solver, files)
     benchmark_solver("MiniSAT", run_minisat, files)
-    benchmark_solver("SAT Solver", run_sat_solver, files)
 
 
 if __name__ == "__main__":
